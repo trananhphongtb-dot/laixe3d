@@ -6,8 +6,8 @@ var icon_name: String = ""
 var title: String = ""
 var sub: String = ""
 var accent := Color(0.98, 0.62, 0.12)
-var title_size: int = 28
-var sub_size: int = 17
+var title_size: int = 30
+var sub_size: int = 20
 var _hover: float = 0.0
 static var _bold: Font
 

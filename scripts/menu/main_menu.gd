@@ -13,6 +13,14 @@ var cam: Camera3D
 var garage_idx: int = 0
 var _idle: AudioStreamPlayer
 var _t: float = 0.0
+var scroller: ScrollContainer
+# Vuốt cuộn ở bất kỳ chỗ nào trong danh sách
+var _drag_id: int = -1
+var _drag_start: Vector2
+var _drag_last_y: float = 0.0
+var _drag_vel: float = 0.0
+var _scroll_f: float = 0.0
+var dragging: bool = false
 
 
 func _ready() -> void:
@@ -120,8 +128,53 @@ func _show_car(id: String, color_idx: int) -> void:
 	turntable.add_child(car_node)
 
 
+func _input(event: InputEvent) -> void:
+	if scroller == null:
+		return
+	if event is InputEventScreenTouch:
+		var e := event as InputEventScreenTouch
+		if e.pressed and _drag_id == -1 and scroller.get_global_rect().has_point(e.position):
+			_drag_id = e.index
+			_drag_start = e.position
+			_drag_last_y = e.position.y
+			_drag_vel = 0.0
+			_scroll_f = scroller.scroll_vertical
+			dragging = false
+		elif not e.pressed and e.index == _drag_id:
+			_drag_id = -1
+			if dragging:
+				get_viewport().set_input_as_handled()
+				# cho thao tác thả tay không kích hoạt nút
+				await get_tree().process_frame
+				dragging = false
+				UiTheme.block_press = false
+	elif event is InputEventScreenDrag:
+		var e := event as InputEventScreenDrag
+		if e.index != _drag_id:
+			return
+		if not dragging and absf(e.position.y - _drag_start.y) > 14.0:
+			dragging = true
+			UiTheme.block_press = true
+		if dragging:
+			var dy := e.position.y - _drag_last_y
+			_scroll_f = clampf(_scroll_f - dy, 0.0, _max_scroll())
+			scroller.scroll_vertical = int(_scroll_f)
+			_drag_vel = -dy / maxf(get_process_delta_time(), 0.001)
+		_drag_last_y = e.position.y
+
+
+func _max_scroll() -> float:
+	var bar := scroller.get_v_scroll_bar()
+	return maxf(bar.max_value - bar.page, 0.0)
+
+
 func _process(delta: float) -> void:
 	_t += delta
+	# quán tính khi thả tay
+	if scroller and _drag_id == -1 and absf(_drag_vel) > 20.0:
+		_scroll_f = clampf(_scroll_f + _drag_vel * delta, 0.0, _max_scroll())
+		scroller.scroll_vertical = int(_scroll_f)
+		_drag_vel = move_toward(_drag_vel, 0.0, delta * maxf(absf(_drag_vel) * 3.0, 400.0))
 	turntable.rotation.y += delta * 0.22
 	var a := 0.75 + sin(_t * 0.15) * 0.18
 	cam.position = Vector3(sin(a) * 7.2, 2.0 + sin(_t * 0.2) * 0.15, cos(a) * 7.2)
@@ -162,17 +215,14 @@ func _build_ui() -> void:
 		ui.add_child(tr)
 
 	# Logo + tiêu đề
-	var logo := Control.new()
-	logo.position = Vector2(34, 30)
-	logo.size = Vector2(84, 84)
+	var logo := TextureRect.new()
+	logo.texture = load("res://icon_fg.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	logo.draw.connect(func():
-		logo.draw_circle(Vector2(42, 42), 40, Color(UiTheme.ACCENT.r, UiTheme.ACCENT.g, UiTheme.ACCENT.b, 0.18))
-		logo.draw_arc(Vector2(42, 42), 30, 0, TAU, 40, UiTheme.ACCENT, 7.0, true)
-		logo.draw_circle(Vector2(42, 42), 8, UiTheme.ACCENT)
-		for ang: float in [PI, 0.0, PI * 0.5]:
-			logo.draw_line(Vector2(42, 42), Vector2(42, 42) + Vector2(cos(ang), sin(ang)) * 28, UiTheme.ACCENT, 6.0, true))
 	ui.add_child(logo)
+	logo.position = Vector2(4, -6)
+	logo.size = Vector2(150, 150)
 	var left := VBoxContainer.new()
 	left.position = Vector2(132, 26)
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -182,7 +232,7 @@ func _build_ui() -> void:
 	title_label.add_theme_font_override("font", Icons.bold_font(1.1))
 	title_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	left.add_child(title_label)
-	var sub := UiTheme.label("", 22, UiTheme.ACCENT)
+	var sub := UiTheme.label("", 26, UiTheme.ACCENT)
 	sub.name = "Sub"
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	left.add_child(sub)
@@ -205,13 +255,14 @@ func _build_ui() -> void:
 	var ps := StyleBoxEmpty.new()
 	panel.add_theme_stylebox_override("panel", ps)
 	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	panel.offset_left = -540
+	panel.offset_left = -640
 	panel.offset_right = -24
 	panel.offset_top = 22
 	panel.offset_bottom = -18
 	ui.add_child(panel)
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroller = sc
 	panel.add_child(sc)
 	content = VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -269,7 +320,7 @@ func _header(text: String) -> void:
 		Sfx.play("ui", -4.0)
 		_show_page("main"))
 	hb.add_child(bb)
-	var l := UiTheme.label(text, 34, Color.WHITE)
+	var l := UiTheme.label(text, 40, Color.WHITE)
 	l.add_theme_font_override("font", Icons.bold_font(0.9))
 	l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -290,6 +341,8 @@ func _card(icon: String, title: String, sub: String, cb: Callable, h: int = 88, 
 	c.custom_minimum_size = Vector2(0, h)
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	c.pressed.connect(func():
+		if dragging:
+			return
 		Sfx.play("ui", -4.0)
 		cb.call())
 	return c
@@ -298,6 +351,10 @@ func _card(icon: String, title: String, sub: String, cb: Callable, h: int = 88, 
 func _show_page(p: String) -> void:
 	page = p
 	_clear()
+	if scroller:
+		scroller.scroll_vertical = 0
+		_scroll_f = 0.0
+		_drag_vel = 0.0
 	_update_stats()
 	match p:
 		"main":
@@ -335,12 +392,12 @@ func _page_main() -> void:
 	]
 	# Chiều cao khả dụng để các thẻ giãn kín tới đáy màn hình
 	var avail := get_viewport().get_visible_rect().size.y - 40.0 - 4.0
-	var big_h := 132.0
+	var big_h := 140.0
 	var gap := 12.0
 	var row_h := floorf((avail - big_h - gap - gap * 3.0) / 4.0)
 	var big := _card("steer", Game.t("menu_lessons"), Game.t("msub_lessons"), func(): _show_page("lessons"), int(big_h), Color(0.35, 0.8, 1.0))
-	big.title_size = 36
-	big.sub_size = 19
+	big.title_size = 40
+	big.sub_size = 23
 	content.add_child(big)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -350,15 +407,15 @@ func _page_main() -> void:
 	content.add_child(grid)
 	for it in items:
 		var c := _card(it[0], Game.t(it[1]), Game.t(it[2]), it[3], int(row_h), it[4])
-		c.title_size = 27
-		c.sub_size = 16
+		c.title_size = 31
+		c.sub_size = 19
 		grid.add_child(c)
 
 
 func _page_exam() -> void:
 	_header(Game.t("menu_exam"))
 	content.add_child(_card("play", Game.t("exam_full"), Game.t("msub_exam_full"), func(): Game.start_drive("exam"), 92))
-	content.add_child(UiTheme.label(Game.t("practice_title"), 22, Color(0.8, 0.85, 0.95)))
+	content.add_child(UiTheme.label(Game.t("practice_title"), 27, Color(0.8, 0.85, 0.95)))
 	for i in range(1, 12):
 		var n := i
 		var done: bool = Game.lessons_done.has(i)
@@ -370,7 +427,7 @@ func _page_exam() -> void:
 
 func _page_lessons() -> void:
 	_header(Game.t("menu_lessons"))
-	content.add_child(UiTheme.label(Game.t("lessons_desc"), 20, Color(0.8, 0.85, 0.95)))
+	content.add_child(UiTheme.label(Game.t("lessons_desc"), 24, Color(0.8, 0.85, 0.95)))
 	var icons := ["flag", "road", "back", "car"]
 	for i in range(1, 5):
 		var n := i
@@ -386,7 +443,8 @@ func _page_lessons() -> void:
 					Game.start_drive("lesson")],
 				[Game.t("cancel"), func(): pass],
 			]), 90, Color(0.45, 0.9, 0.45) if done else Color(0.35, 0.8, 1.0))
-		c.title_size = 26
+		c.title_size = 29
+		c.sub_size = 20
 		content.add_child(c)
 
 
@@ -404,6 +462,8 @@ func _toggle_row(options: Array, current: Variant, cb: Callable) -> HBoxContaine
 		b.custom_minimum_size = Vector2(0, 58)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(func():
+			if dragging:
+				return
 			Sfx.play("ui", -4.0)
 			cb.call(val))
 		hb.add_child(b)
@@ -412,14 +472,14 @@ func _toggle_row(options: Array, current: Variant, cb: Callable) -> HBoxContaine
 
 func _page_free() -> void:
 	_header(Game.t("menu_free"))
-	content.add_child(UiTheme.label(Game.t("time_of_day"), 22))
+	content.add_child(UiTheme.label(Game.t("time_of_day"), 27))
 	content.add_child(_toggle_row([[false, Game.t("day")], [true, Game.t("night")]], Game.free_night, func(v): Game.free_night = v))
-	content.add_child(UiTheme.label(Game.t("weather"), 22))
+	content.add_child(UiTheme.label(Game.t("weather"), 27))
 	content.add_child(_toggle_row([[false, Game.t("sunny")], [true, Game.t("rainy")]], Game.free_rain, func(v): Game.free_rain = v))
 	var go := UiTheme.button(Game.t("start"), func(): Game.start_drive("free"), 76)
 	go.add_theme_font_size_override("font_size", 30)
 	content.add_child(go)
-	content.add_child(UiTheme.label(Game.t("free_desc"), 20, Color(0.8, 0.82, 0.88)))
+	content.add_child(UiTheme.label(Game.t("free_desc"), 24, Color(0.8, 0.82, 0.88)))
 	_back()
 
 
@@ -460,7 +520,7 @@ func _page_garage() -> void:
 		garage_idx = (garage_idx - 1 + Game.CAR_ORDER.size()) % Game.CAR_ORDER.size()
 		_show_page("garage"), 64)
 	prev.custom_minimum_size.x = 70
-	var nm := UiTheme.label(Game.car_name(id), 30, Color.WHITE)
+	var nm := UiTheme.label(Game.car_name(id), 34, Color.WHITE)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var nxt := UiTheme.button("›", func():
@@ -471,7 +531,7 @@ func _page_garage() -> void:
 	hb.add_child(nm)
 	hb.add_child(nxt)
 	content.add_child(hb)
-	content.add_child(UiTheme.label("%s: %d km/h   %s: %d kg" % [Game.t("top_speed"), int(spec["top"]), Game.t("weight"), int(spec["mass"])], 21))
+	content.add_child(UiTheme.label("%s: %d km/h   %s: %d kg" % [Game.t("top_speed"), int(spec["top"]), Game.t("weight"), int(spec["mass"])], 25))
 	var owned := Game.cars_owned.has(id)
 	var price: int = spec["price"]
 	var action: Button
@@ -494,7 +554,7 @@ func _page_garage() -> void:
 			_show_page("garage"), 66)
 		action.disabled = Game.money < price
 	content.add_child(action)
-	content.add_child(UiTheme.label(Game.t("paint"), 22))
+	content.add_child(UiTheme.label(Game.t("paint"), 27))
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 10)
@@ -524,10 +584,10 @@ func _page_garage() -> void:
 func _page_settings() -> void:
 	_header(Game.t("menu_settings"))
 	var s := Game.settings
-	content.add_child(UiTheme.label(Game.t("set_control"), 22))
+	content.add_child(UiTheme.label(Game.t("set_control"), 27))
 	content.add_child(_toggle_row([["wheel", Game.t("ctl_wheel")], ["tilt", Game.t("ctl_tilt")], ["buttons", Game.t("ctl_buttons")]],
 		s["control"], func(v): Game.set_setting("control", v)))
-	content.add_child(UiTheme.label(Game.t("set_steer_sens"), 22))
+	content.add_child(UiTheme.label(Game.t("set_steer_sens"), 27))
 	var ss := HSlider.new()
 	ss.min_value = 0.5
 	ss.max_value = 1.5
@@ -541,15 +601,15 @@ func _page_settings() -> void:
 	inv.button_pressed = s["tilt_invert"]
 	inv.toggled.connect(func(v): Game.set_setting("tilt_invert", v))
 	content.add_child(inv)
-	content.add_child(UiTheme.label(Game.t("set_trans"), 22))
+	content.add_child(UiTheme.label(Game.t("set_trans"), 27))
 	content.add_child(_toggle_row([["auto", Game.t("trans_auto")], ["manual", Game.t("trans_manual")]],
 		s["transmission"], func(v): Game.set_setting("transmission", v)))
-	content.add_child(UiTheme.label(Game.t("set_graphics"), 22))
+	content.add_child(UiTheme.label(Game.t("set_graphics"), 27))
 	content.add_child(_toggle_row([[0, Game.t("gfx_low")], [1, Game.t("gfx_med")], [2, Game.t("gfx_high")]],
 		int(s["graphics"]), func(v): Game.set_setting("graphics", v)))
 	for pair in [["engine_vol", "set_engine_vol"], ["sfx_vol", "set_sfx_vol"]]:
 		var key: String = pair[0]
-		content.add_child(UiTheme.label(Game.t(pair[1]), 22))
+		content.add_child(UiTheme.label(Game.t(pair[1]), 27))
 		var sl := HSlider.new()
 		sl.min_value = 0.0
 		sl.max_value = 1.0
@@ -573,7 +633,7 @@ func _page_guide() -> void:
 		Game.start_drive("tutorial"), 72)
 	tb.add_theme_font_size_override("font_size", 26)
 	content.add_child(tb)
-	var l := UiTheme.label(Game.t("guide_text"), 20)
+	var l := UiTheme.label(Game.t("guide_text"), 25)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_child(l)
 	_back()

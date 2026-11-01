@@ -22,7 +22,7 @@ func _ready() -> void:
 	MeshBatch.mat("trunk", Color(0.36, 0.25, 0.16), 0.9)
 	MeshBatch.mat("leaf", Color(0.2, 0.45, 0.18), 0.9)
 	MeshBatch.mat("wall", Color(0.85, 0.83, 0.78), 0.9)
-	EnvBuilder.ground(self, Vector2(300, 300), Vector3(0, 0, 40), Color(0.36, 0.52, 0.27))
+	EnvBuilder.ground(self, Vector2(300, 300), Vector3(0, 0, 40), Color(0.3, 0.44, 0.22))
 	match lesson:
 		1:
 			_build_stop()
@@ -33,7 +33,9 @@ func _ready() -> void:
 		4:
 			_build_garage()
 	_trees()
+	Scenery.texturize("asph", 0.35, 0.3, 0.25)
 	batch.commit(self)
+	Scenery.surround(self, Vector3(0, 0, 40), Rect2(-150, -110, 300, 300), 300.0, false, false, 41)
 
 
 func _yaw_xf(pos: Vector3, yaw: float) -> Transform3D:

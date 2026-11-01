@@ -175,7 +175,7 @@ func _stop_line(info: Dictionary, u: float, hw: float) -> void:
 
 
 func _build() -> void:
-	EnvBuilder.ground(self, Vector2(220, 420), Vector3(-10, 0, 165), Color(0.36, 0.52, 0.27))
+	EnvBuilder.ground(self, Vector2(220, 420), Vector3(-10, 0, 165), Color(0.3, 0.44, 0.22))
 	_pos = Vector3.ZERO
 	_dir = Vector3(0, 0, 1)
 
@@ -337,6 +337,9 @@ func _build() -> void:
 	_lesson(11, "finish", i11, {"line_u": 34.0})
 
 	_decor()
+	Scenery.texturize("asph", 0.35, 0.3, 0.25)
+	Scenery.texturize("conc", 0.5, 0.3, 0.2)
+	Scenery.surround(self, Vector3(-10, 0, 165), Rect2(-120, -45, 220, 420), 360.0, false, false, 31)
 
 
 func _lane_edge_with_gap(info: Dictionary, side: float, u0: float, u1: float) -> void:

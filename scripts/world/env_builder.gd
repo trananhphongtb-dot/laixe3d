@@ -108,5 +108,11 @@ static func ground(parent: Node3D, size: Vector2, center: Vector3, color: Color)
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.roughness = 1.0
+	if Scenery.gfx() > 0:
+		m.albedo_texture = Scenery.noise_tex("ground_%s" % color.to_html(), color, 0.35, 0.06)
+		m.albedo_color = Color.WHITE
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3.ONE * 0.12
 	mi.material_override = m
 	parent.add_child(mi)

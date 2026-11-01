@@ -18,6 +18,7 @@ var _t: float = 0.0
 var _ok_timer: float = -1.0
 var _cam_toggles: int = 0
 var _moved: bool = false
+var _braked: bool = false
 
 
 func setup(p_hud: Hud, p_car: PlayerCar) -> void:
@@ -44,7 +45,9 @@ func _build_steps() -> void:
 		steps.append({"k": "tut_gear_manual", "t": hud.clutch_p, "ok": func(): return car.gear >= 1})
 		steps.append({"k": "tut_gas_manual", "t": hud.gas, "ok": func(): return car.speed_kmh > 8.0})
 	else:
+		steps.append({"k": "ls_brake_hold", "t": hud.brake_p, "ok": func(): return hud.brake_p.locked and hud.brake_p.value >= 0.15})
 		steps.append({"k": "tut_gear_auto", "t": hud.gear_btns.get("D"), "ok": func(): return car.auto_mode == "D"})
+		steps.append({"k": "ls_brake_release", "t": hud.brake_p, "ok": func(): return hud.brake_p.value <= 0.0})
 		steps.append({"k": "tut_gas", "t": hud.gas, "ok": func(): return car.speed_kmh > 10.0})
 	steps.append({"k": "tut_brake", "t": hud.brake_p, "ok": func(): return car.speed_kmh < 1.0})
 	steps.append({"k": "tut_blinker", "t": hud.b_blink_l, "ok": func(): return car.blinker == -1 or car.blinker == 1})
@@ -148,6 +151,11 @@ func _process(delta: float) -> void:
 		if k == "tut_brake" and not _moved:
 			_moved = car.speed_kmh > 5.0
 			return
+		if k == "tut_brake":
+			if car.brake_input > 0.05:
+				_braked = true
+			if not _braked:
+				return
 		if cb.call():
 			_ok_timer = 1.1
 			ok_l.text = "✓ " + Game.t("tut_good")

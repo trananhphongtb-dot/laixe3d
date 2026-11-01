@@ -32,6 +32,7 @@ func _ready() -> void:
 		night = md["night"]
 		rain = md["rain"]
 	env = EnvBuilder.build(self, night, rain)
+	Scenery.cur_rain = rain
 
 	car = PlayerCar.new()
 	car.setup(Game.car_spec(), Game.COLORS[Game.car_color % Game.COLORS.size()], Game.settings.get("transmission", "auto") == "manual")
@@ -64,12 +65,12 @@ func _ready() -> void:
 	cam_cabin.rotation.y = PI
 	cam_cabin.fov = 72.0
 	cam_cabin.near = 0.05
-	cam_cabin.far = 400.0
+	cam_cabin.far = 2000.0
 	cam_cabin.cull_mask = 1 | CarModel.LAYER_INTERIOR
 	car.add_child(cam_cabin)
 	cam_chase = Camera3D.new()
 	cam_chase.fov = 65.0
-	cam_chase.far = 450.0
+	cam_chase.far = 2000.0
 	cam_chase.cull_mask = 1 | CarModel.LAYER_EXTERIOR
 	add_child(cam_chase)
 	cam_cabin.current = true

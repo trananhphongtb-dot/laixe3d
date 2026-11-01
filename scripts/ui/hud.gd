@@ -12,7 +12,7 @@ var btn_left: TouchCtl
 var btn_right: TouchCtl
 var gas: TouchThrottle
 var cam_btn: TouchCtl
-var brake_p: TouchPedal
+var brake_p: TouchThrottle
 var clutch_p: TouchPedal
 var gauges: Gauges
 var info_label: Label
@@ -34,6 +34,9 @@ var mirrors_root: Control
 var mirror_cams: Array = []    # [Camera3D, local Transform3D]
 var mirror_vps: Array[SubViewport] = []
 var controls_enabled: bool = true
+## Khi đang khóa điều khiển (popup bài học), chạm vào một trong các nút này sẽ phát gate_passed rồi xử lý bình thường
+var gate_ctls: Array = []
+signal gate_passed(ctl: TouchCtl)
 var cabin_view: bool = true
 
 var _touch_owner: Dictionary = {}
@@ -113,24 +116,26 @@ func _build_controls() -> void:
 	_anchor(gas, BR, Vector2(-134, -350), Vector2(120, 334))
 	_add_touch(gas)
 	# Phanh
-	brake_p = TouchPedal.new()
+	brake_p = TouchThrottle.new()
 	brake_p.label = Game.t("hud_brake")
-	brake_p.color = Color(0.72, 0.16, 0.14)
-	brake_p.min_value = 0.12
-	brake_p.press_rate = 5.0
-	brake_p.release_rate = 10.0
-	brake_p.show_marks = true
-	_anchor(brake_p, BR, Vector2(-270, -240), Vector2(128, 224))
+	brake_p.fill_color = Color(0.9, 0.5, 0.2)
+	brake_p.hot_color = Color(0.9, 0.12, 0.1)
+	brake_p.top_label = Game.t("brake_hard")
+	brake_p.bottom_label = Game.t("brake_soft")
+	_anchor(brake_p, BR, Vector2(-262, -350), Vector2(120, 334))
 	_add_touch(brake_p)
-	brake_p.pressed.connect(func(): gas.set_value(0.0))
-	var gx := -364.0
+	brake_p.pressed.connect(func():
+		gas.value = 0.0
+		gas.locked = false
+		gas.queue_redraw())
+	var gx := -356.0
 	if car.manual:
 		clutch_p = TouchPedal.new()
 		clutch_p.label = Game.t("hud_clutch")
 		clutch_p.color = Color(0.25, 0.35, 0.7)
 		clutch_p.instant = true
 		clutch_p.press_rate = 20.0
-		_anchor(clutch_p, BR, Vector2(-392, -220), Vector2(116, 204))
+		_anchor(clutch_p, BR, Vector2(-382, -230), Vector2(114, 214))
 		_add_touch(clutch_p)
 		gx = -490.0
 		var up := _btn("up", "", BR, Vector2(gx, -214), Vector2(84, 92))
@@ -216,11 +221,11 @@ func _build_info() -> void:
 	info_panel.add_theme_stylebox_override("panel", sb)
 	info_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_panel.position = Vector2(12, 12)
-	info_panel.custom_minimum_size = Vector2(330, 0)
+	info_panel.custom_minimum_size = Vector2(400, 0)
 	root.add_child(info_panel)
 	info_label = Label.new()
-	info_label.add_theme_font_size_override("font_size", 20)
-	info_label.custom_minimum_size = Vector2(330, 0)
+	info_label.add_theme_font_size_override("font_size", 25)
+	info_label.custom_minimum_size = Vector2(400, 0)
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_panel.add_child(info_label)
 	info_panel.visible = false
@@ -316,7 +321,7 @@ func _build_mirrors() -> void:
 		if label != "":
 			var lb := Label.new()
 			lb.text = label
-			lb.add_theme_font_size_override("font_size", 13)
+			lb.add_theme_font_size_override("font_size", 16)
 			lb.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
 			lb.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 			lb.add_theme_constant_override("outline_size", 4)
@@ -346,7 +351,7 @@ func toast(text: String, color: Color = Color.WHITE, dur: float = 3.0) -> void:
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 26)
+	l.add_theme_font_size_override("font_size", 30)
 	l.add_theme_color_override("font_color", color)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -391,7 +396,17 @@ func _input(event: InputEvent) -> void:
 		var e := event as InputEventScreenTouch
 		if e.pressed:
 			if not controls_enabled:
-				return
+				var passed: TouchCtl = null
+				for gc in gate_ctls:
+					var g: TouchCtl = gc
+					if is_instance_valid(g) and g.is_visible_in_tree() and g.get_global_rect().grow(6).has_point(e.position):
+						passed = g
+						break
+				if passed == null:
+					return
+				gate_passed.emit(passed)
+				if not controls_enabled:
+					return
 			for i in range(_touch_ctls.size() - 1, -1, -1):
 				var c := _touch_ctls[i]
 				if c.is_visible_in_tree() and c.get_global_rect().has_point(e.position):
@@ -487,7 +502,6 @@ func _process(delta: float) -> void:
 		thr = 1.0
 	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
 		brk = 1.0
-		gas.set_value(0.0)
 	var clu := clutch_p != null and clutch_p.value > 0.5
 	if Input.is_key_pressed(KEY_SHIFT):
 		clu = true
@@ -569,5 +583,5 @@ func _draw_compass() -> void:
 	var txt := "%d m" % int(dist)
 	if target_label != "":
 		txt = target_label + " · " + txt
-	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-	compass.draw_string(f, Vector2(80 - tw * 0.5, 104), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+	compass.draw_string(f, Vector2(80 - tw * 0.5, 108), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)

@@ -77,7 +77,7 @@ func _draw() -> void:
 		draw_string(_bold, Vector2(c.x - tw * 0.5, c.y + fs * 0.36), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 	if caption != "":
 		var f := get_theme_default_font()
-		var cs := 12
+		var cs := 15
 		var cw := f.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, cs).x
 		while cw > size.x - 6 and cs > 8:
 			cs -= 1

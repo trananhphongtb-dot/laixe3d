@@ -62,7 +62,8 @@ func setup(car_spec: Dictionary, color: Color, is_manual: bool) -> void:
 	contact_monitor = true
 	max_contacts_reported = 4
 	can_sleep = false
-	linear_damp = 0.05
+	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	linear_damp = 0.0   # lực cản tính riêng cho đúng thực tế (ma sát lăn, gió, phanh động cơ)
 	angular_damp = 0.6
 	collision_layer = 1
 	collision_mask = 1
@@ -98,7 +99,7 @@ func setup(car_spec: Dictionary, color: Color, is_manual: bool) -> void:
 			w.wheel_friction_slip = 2.5
 			w.wheel_roll_influence = 0.02
 			w.use_as_steering = front
-			w.use_as_traction = true
+			w.use_as_traction = front   # dẫn động cầu trước như đa số xe con
 			var vis := CarModel.make_wheel_mesh(wr, CarModel.LAYER_EXTERIOR)
 			w.add_child(vis)
 			add_child(w)
@@ -135,6 +136,21 @@ func setup(car_spec: Dictionary, color: Color, is_manual: bool) -> void:
 
 func _ready() -> void:
 	_skid.play()
+
+
+## Bàn đạp ga điện tử: nhẹ ở đầu hành trình, mạnh dần về cuối (giống xe thật)
+static func _pedal(t: float) -> float:
+	return pow(clampf(t, 0.0, 1.0), 1.1)
+
+
+static func brake_decel(b: float) -> float:
+	var pts := [[0.0, 0.0], [0.1, 0.5], [0.25, 1.5], [0.5, 3.0], [0.75, 5.5], [1.0, 8.5]]
+	for i in range(1, pts.size()):
+		if b <= pts[i][0]:
+			var a: Array = pts[i - 1]
+			var c: Array = pts[i]
+			return lerpf(a[1], c[1], (b - a[0]) / (c[0] - a[0]))
+	return 8.5
 
 
 func set_wet(v: bool) -> void:
@@ -306,7 +322,10 @@ func _physics_process(delta: float) -> void:
 	var power: float = spec["power"]
 	var top_ms: float = float(spec["top"]) / 3.6
 	var wrpm := _wheel_rpm()
-	var brake_v := brake_input * 55.0
+	# Phanh chân: giữ xe đứng yên bằng phanh bánh; khi xe chạy dùng lực giảm tốc theo thang thực tế
+	var brake_v := 0.0
+	if brake_input > 0.02 and absf(speed_ms) < 0.5:
+		brake_v = 12.0 + brake_input * 40.0
 
 	if not engine_on:
 		rpm = move_toward(rpm, 0.0, delta * 3000.0)
@@ -330,7 +349,7 @@ func _physics_process(delta: float) -> void:
 				_stall()
 			else:
 				var mult := pow(ratio / RATIOS[0], 0.75)
-				force = throttle * power * mult
+				force = minf(_pedal(throttle) * power * mult, _pedal(throttle) * power * 15.0 / maxf(absf(speed_ms), 3.0))
 				if rpm >= REDLINE:
 					force = 0.0
 				if g == -1:
@@ -351,7 +370,7 @@ func _physics_process(delta: float) -> void:
 				var r_w := wrpm * 3.4 * FINAL
 				rpm = move_toward(rpm, maxf(IDLE + throttle * 1500.0, r_w), delta * 6000.0)
 				force = -(throttle * power * 0.75)
-				if throttle < 0.05 and brake_input < 0.05 and speed_ms > -1.8:
+				if throttle < 0.05 and brake_input < 0.08 and speed_ms > -1.8:
 					force = -power * 0.11
 				if speed_ms < -6.0:
 					force = maxf(force, 0.0)
@@ -368,19 +387,26 @@ func _physics_process(delta: float) -> void:
 				ratio = RATIOS[auto_gear - 1]
 				r_w = wrpm * ratio * FINAL
 				rpm = move_toward(rpm, maxf(IDLE + throttle * 900.0, r_w), delta * 6000.0)
-				force = throttle * power * pow(ratio / RATIOS[0], 0.6)
-				if throttle < 0.05 and brake_input < 0.05 and speed_ms < 1.8:
+				force = minf(_pedal(throttle) * power * pow(ratio / RATIOS[0], 0.6), _pedal(throttle) * power * 15.0 / maxf(speed_ms, 3.0))
+				if throttle < 0.05 and brake_input < 0.08 and speed_ms < 1.8:
 					force = power * 0.11
 				if speed_ms > top_ms:
 					force = 0.0
 
 	engine_force = force
 	brake = brake_v
+	# Lực phanh chân theo thang thực tế (m/s²): 10% giữ xe, 25% rà ~1,5, 50% ~3, 100% ~8,5 (có ABS)
+	if brake_input > 0.02 and absf(speed_ms) >= 0.5:
+		var dec := brake_decel(brake_input)
+		if wet:
+			dec = minf(dec, 5.5)
+		dec = minf(dec, absf(speed_ms) / delta * 0.9)
+		apply_central_force(-fwd * signf(speed_ms) * mass * dec)
 	# Lực cản khi chạy trớn: ma sát lăn + gió + phanh động cơ (số tự động, nhả ga)
 	if absf(speed_ms) > 0.3:
 		var resist := mass * 9.8 * 0.012 + 0.42 * speed_ms * speed_ms
 		if not manual and engine_on and (auto_mode == "D" or auto_mode == "R") and throttle < 0.05 and speed_kmh > 8.0:
-			resist += mass * 0.3
+			resist += mass * (0.18 + 0.06 * float(6 - auto_gear))
 		apply_central_force(-fwd * signf(speed_ms) * resist)
 	if handbrake:
 		wheels[2].brake = 30.0

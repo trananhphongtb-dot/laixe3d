@@ -23,6 +23,7 @@ var _warn_cool: Dictionary = {}
 var guided: bool = true           # false = tự tập: không popup, cuối bài mới nhận xét
 var results: Array = []           # [đạt?, lời nhận xét] của các bước có chấm
 var try_b: Button
+var hint_l: Label
 var again_b: Button
 var compact: bool = false
 var _pending_note: String = ""
@@ -50,7 +51,9 @@ func setup(p_hud: Hud, p_car: PlayerCar, p_yard: LessonYard) -> void:
 		4:
 			_steps_garage()
 	steps.append({"k": "ls_done", "tap": true})
+	_expand_steps()
 	_build_card()
+	hud.gate_passed.connect(_on_gate)
 	_go(0)
 
 
@@ -82,12 +85,26 @@ func _stopped() -> bool:
 	return _stop_t > 0.5
 
 
-func _gear_step(key_auto: String, key_manual: String, want_reverse: bool) -> Dictionary:
+func _gear_step(key_auto: String, key_manual: String, want_reverse: bool, from_park: bool = false) -> Dictionary:
 	if car.manual:
 		var t: Control = hud.clutch_p
 		return {"k": key_manual, "t": t, "ok": func(): return _reverse() if want_reverse else _drive()}
 	var g: Control = hud.gear_btns.get("R" if want_reverse else "D")
-	return {"k": key_auto, "t": g, "ok": func(): return _reverse() if want_reverse else _drive()}
+	return {"k": key_auto, "t": g, "ok": func(): return _reverse() if want_reverse else _drive(), "from_park": from_park}
+
+
+## Xe số tự động rời số P: tách thành 3 bước dễ làm — kéo phanh giữ cố định, chạm D, rồi nhả phanh.
+func _expand_steps() -> void:
+	var out: Array = []
+	for s in steps:
+		var d: Dictionary = s
+		if d.get("from_park", false) and not car.manual:
+			out.append({"k": "ls_brake_hold", "t": hud.brake_p, "ok": func(): return hud.brake_p.locked and hud.brake_p.value >= 0.15})
+			out.append(d)
+			out.append({"k": "ls_brake_release", "t": hud.brake_p, "ok": func(): return hud.brake_p.value <= 0.0})
+		else:
+			out.append(d)
+	steps = out
 
 
 func _park_step() -> Dictionary:
@@ -105,7 +122,7 @@ func _steps_stop() -> void:
 	steps = [
 		{"k": "l1_intro", "tap": true},
 		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
-		_gear_step("l1_gear", "l1_gear_manual", false),
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
 		{"k": "l1_signal", "t": hud.b_blink_l, "ok": func(): return car.blinker == -1},
 		{"k": "l1_go", "t": hud.gas, "ok": func(): return car.speed_kmh > 12.0},
 		{"k": "l1_keep", "t": hud.gauges, "ok": func(): return car.front_point().z > line_z - 16.0},
@@ -134,7 +151,7 @@ func _steps_turn() -> void:
 		return p.x > 10.0 and p.z > cz + 0.4 and p.z < cz + hw - 0.4 and absf(wrapf(_yaw() - PI * 0.5, -PI, PI)) < deg_to_rad(12.0)
 	steps = [
 		{"k": "l2_intro", "tap": true},
-		_gear_step("l1_gear", "l1_gear_manual", false),
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
 		{"k": "l2_go", "t": hud.gas, "ok": func(): return car.speed_kmh > 10.0},
 		{"k": "l2_signal_r", "t": hud.b_blink_r, "ok": func(): return car.blinker == 1, "warn_late": stop_z},
 		{"k": "l2_slow", "t": hud.brake_p, "ok": func(): return car.speed_kmh < 15.0 and car.front_point().z > stop_z - 12.0},
@@ -165,7 +182,7 @@ func _steps_uturn() -> void:
 	steps = [
 		{"k": "l3_intro", "tap": true},
 		{"k": "l3_signal", "t": hud.b_blink_l, "ok": func(): return car.blinker == -1},
-		_gear_step("l1_gear", "l1_gear_manual", false),
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
 		{"k": "l3_fwd", "t": hud.steer, "enter": func(): st["yaw0"] = _yaw(), "ok": func(): return _turned() > deg_to_rad(55.0) or car.front_point().x > hw - 1.2},
 		{"k": "l3_stop1", "t": hud.brake_p, "ok": func(): return _stopped(), "judge": func():
 			var gap := hw - maxf(car.front_point().x, _corner_max_x())
@@ -197,7 +214,7 @@ func _steps_garage() -> void:
 	var bay: Array = yard.geo["bay"]
 	steps = [
 		{"k": "l4_intro", "tap": true},
-		_gear_step("l1_gear", "l1_gear_manual", false),
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
 		{"k": "l4_drive", "t": hud.gas, "ok": func(): return car.global_position.z > mark_z - 9.0},
 		{"k": "l4_stop", "t": hud.brake_p, "ok": func(): return _stopped() and car.global_position.z > mark_z - 6.0, "judge": func():
 			var eye_z := (car.global_transform * car.eye_position()).z
@@ -236,42 +253,82 @@ func _build_card() -> void:
 	sb.shadow_color = Color(0, 0, 0, 0.5)
 	sb.shadow_size = 18
 	for side in [SIDE_LEFT, SIDE_RIGHT]:
-		sb.set_content_margin(side, 26)
+		sb.set_content_margin(side, 28)
 	for side in [SIDE_TOP, SIDE_BOTTOM]:
-		sb.set_content_margin(side, 18)
+		sb.set_content_margin(side, 20)
 	card.add_theme_stylebox_override("panel", sb)
+	card.gui_input.connect(_on_card_input)
 	add_child(card)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 10)
+	vb.add_theme_constant_override("separation", 12)
+	vb.mouse_filter = Control.MOUSE_FILTER_PASS
 	card.add_child(vb)
-	title_l = UiTheme.label("", 18, Color(0.35, 0.8, 1.0))
+	title_l = UiTheme.label("", 21, Color(0.35, 0.8, 1.0))
 	vb.add_child(title_l)
-	note_l = UiTheme.label("", 23, Color(0.45, 1.0, 0.55))
+	note_l = UiTheme.label("", 26, Color(0.45, 1.0, 0.55))
 	note_l.visible = false
 	vb.add_child(note_l)
-	body_l = UiTheme.label("", 26, Color.WHITE)
-	body_l.custom_minimum_size = Vector2(600, 0)
+	body_l = UiTheme.label("", 30, Color.WHITE)
+	body_l.custom_minimum_size = Vector2(640, 0)
 	vb.add_child(body_l)
+	hint_l = UiTheme.label("", 21, Color(1.0, 0.82, 0.3))
+	vb.add_child(hint_l)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 12)
 	hb.alignment = BoxContainer.ALIGNMENT_END
 	vb.add_child(hb)
-	again_b = UiTheme.button(Game.t("ls_retry"), func(): Game.start_drive("lesson"), 56)
-	again_b.custom_minimum_size.x = 150
-	again_b.add_theme_font_size_override("font_size", 20)
+	again_b = UiTheme.button(Game.t("ls_retry"), func(): Game.start_drive("lesson"), 60)
+	again_b.custom_minimum_size.x = 160
+	again_b.add_theme_font_size_override("font_size", 22)
 	hb.add_child(again_b)
-	next_b = UiTheme.button(Game.t("tut_next"), func(): _go(idx + 1), 56)
-	next_b.custom_minimum_size.x = 170
+	next_b = UiTheme.button(Game.t("tut_next"), func(): _on_next(), 60)
+	next_b.custom_minimum_size.x = 190
+	next_b.add_theme_font_size_override("font_size", 26)
 	hb.add_child(next_b)
-	try_b = UiTheme.button("▶ " + Game.t("ls_try"), func(): _set_compact(true), 56)
-	try_b.custom_minimum_size.x = 190
-	try_b.add_theme_font_size_override("font_size", 24)
-	hb.add_child(try_b)
+	try_b = next_b
 	if not guided:
 		card.visible = false
 
 
-## Thẻ lớn giữa màn hình (game tạm dừng) hoặc thanh nhắc nhỏ phía trên (đang làm thử).
+## Các nút được phép bấm để tắt popup và làm luôn
+func _gate_for(s: Dictionary) -> Array:
+	var t = s.get("t")
+	if t == null or not (t is TouchCtl):
+		return []
+	if t == hud.steer or t == hud.gas or t == hud.brake_p:
+		# thao tác lái liên tục: chạm vô lăng, ga hoặc phanh đều được
+		var arr: Array = [hud.gas, hud.brake_p]
+		if hud.steer:
+			arr.append(hud.steer)
+		if hud.btn_left:
+			arr.append_array([hud.btn_left, hud.btn_right])
+		return arr
+	return [t]
+
+
+func _on_gate(_ctl: TouchCtl) -> void:
+	if guided and not compact and idx >= 0 and idx < steps.size():
+		_set_compact(true)
+
+
+func _on_card_input(e: InputEvent) -> void:
+	if compact or idx < 0 or idx >= steps.size():
+		return
+	var s: Dictionary = steps[idx]
+	var pressed_ev: bool = (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed)
+	if pressed_ev and s.get("tap", false):
+		_on_next()
+
+
+func _on_next() -> void:
+	var s: Dictionary = steps[idx]
+	if s.get("tap", false):
+		_go(idx + 1)
+	else:
+		_set_compact(true)
+
+
+## Thẻ lớn giữa màn hình (xe đứng yên chờ đọc) hoặc dòng nhắc nhỏ phía trên (đang thực hiện).
 func _set_compact(v: bool) -> void:
 	compact = v
 	if v:
@@ -279,32 +336,43 @@ func _set_compact(v: bool) -> void:
 		card.anchor_right = 0.5
 		card.anchor_top = 0.0
 		card.anchor_bottom = 0.0
-		card.offset_left = -300
-		card.offset_right = 300
-		card.offset_top = 172
-		card.offset_bottom = 172
-		body_l.add_theme_font_size_override("font_size", 19)
-		body_l.custom_minimum_size = Vector2(560, 0)
+		card.offset_left = -330
+		card.offset_right = 330
+		card.offset_top = 176
+		card.offset_bottom = 176
+		body_l.add_theme_font_size_override("font_size", 23)
+		body_l.custom_minimum_size = Vector2(600, 0)
 		note_l.visible = false
 		title_l.visible = false
-		for b in [again_b, next_b, try_b]:
-			b.visible = false
-		card.modulate.a = 0.88
+		hint_l.visible = false
+		again_b.visible = false
+		next_b.visible = false
+		card.modulate.a = 0.9
+		hud.gate_ctls = []
 		_pause(false)
 	else:
 		card.anchor_left = 0.5
 		card.anchor_right = 0.5
 		card.anchor_top = 0.5
 		card.anchor_bottom = 0.5
-		card.offset_left = -330
-		card.offset_right = 330
-		card.offset_top = -150
-		card.offset_bottom = -150
-		body_l.add_theme_font_size_override("font_size", 26)
-		body_l.custom_minimum_size = Vector2(600, 0)
+		card.offset_left = -350
+		card.offset_right = 350
+		card.offset_top = -170
+		card.offset_bottom = -170
+		body_l.add_theme_font_size_override("font_size", 30)
+		body_l.custom_minimum_size = Vector2(640, 0)
 		title_l.visible = true
 		again_b.visible = true
 		card.modulate.a = 1.0
+		var s: Dictionary = steps[idx]
+		var gate := _gate_for(s)
+		var tap: bool = s.get("tap", false)
+		hud.gate_ctls = gate
+		# Bước có nút cần bấm: bỏ nút "Tiếp", hướng dẫn bấm thẳng vào nút đang nhấp nháy
+		next_b.visible = tap or gate.is_empty()
+		next_b.text = (Game.t("ls_finish") if idx == steps.size() - 1 else Game.t("tut_next")) if tap else "OK"
+		hint_l.visible = not tap and not gate.is_empty()
+		hint_l.text = "👉 " + Game.t("ls_tap_hint")
 		_pause(true)
 	card.call_deferred("reset_size")
 	queue_redraw()
@@ -358,9 +426,6 @@ func _go(i: int) -> void:
 	note_l.add_theme_color_override("font_color", Color(0.45, 1.0, 0.55) if _pending_good else Color(1.0, 0.75, 0.3))
 	note_l.visible = _pending_note != ""
 	_pending_note = ""
-	next_b.visible = tap
-	try_b.visible = not tap
-	next_b.text = Game.t("ls_finish") if idx == steps.size() - 1 else Game.t("tut_next")
 	if s.has("enter"):
 		var cb: Callable = s["enter"]
 		cb.call()
