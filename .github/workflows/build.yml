@@ -17,6 +17,9 @@ env:
   GODOT_TAG: 4.7.2-stable
   GODOT_TEMPLATE_DIR: 4.7.2.stable
 
+permissions:
+  contents: write
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -141,10 +144,20 @@ jobs:
           BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
           $BT/aapt2 dump badging build/laixe3d.apk | grep -E "package:|sdkVersion|targetSdkVersion" || true
 
-      - uses: actions/upload-artifact@v4
+      # Đặt tên file rõ ràng rồi đăng lên mục Releases: tải về là file .apk / .aab dùng ngay, không bị nén zip
+      - name: Rename
+        run: |
+          V="1.0.${{ github.run_number }}"
+          mv build/laixe3d.apk "build/LearnToDrive3D-$V.apk"
+          [ -f build/laixe3d.aab ] && mv build/laixe3d.aab "build/LearnToDrive3D-$V.aab" || true
+          echo "VER=$V" >> $GITHUB_ENV
+          ls -la build
+
+      - uses: softprops/action-gh-release@v2
         with:
-          name: laixe3d-${{ github.run_number }}
-          if-no-files-found: ignore
-          path: |
-            build/laixe3d.apk
-            build/laixe3d.aab
+          tag_name: v${{ env.VER }}
+          name: Learn to Drive 3D ${{ env.VER }}${{ (github.event_name == 'workflow_dispatch' && inputs.aab) && ' (APK + AAB)' || ' (APK thử)' }}
+          prerelease: ${{ !(github.event_name == 'workflow_dispatch' && inputs.aab) }}
+          files: |
+            build/LearnToDrive3D-*.apk
+            build/LearnToDrive3D-*.aab
