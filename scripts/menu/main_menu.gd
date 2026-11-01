@@ -43,8 +43,8 @@ func _build_3d() -> void:
 	we.environment = env
 	add_child(we)
 	var batch := MeshBatch.new()
-	MeshBatch.mat("g_floor", Color(0.16, 0.17, 0.19), 0.35, 0.0, 0.2)
-	MeshBatch.mat("g_wall", Color(0.22, 0.23, 0.26), 0.9)
+	MeshBatch.mat("g_floor", Color(0.1, 0.11, 0.14), 0.25, 0.0, 0.3)
+	MeshBatch.mat("g_wall", Color(0.13, 0.14, 0.18), 0.9)
 	MeshBatch.mat("g_stripe", Color(0.98, 0.62, 0.12), 0.6, 0.15)
 	MeshBatch.mat("g_light", Color(1, 1, 1), 0.5, 4.0)
 	MeshBatch.mat("g_tt", Color(0.1, 0.1, 0.11), 0.3, 0.0, 0.6)
@@ -60,8 +60,27 @@ func _build_3d() -> void:
 		var l := OmniLight3D.new()
 		l.position = p
 		l.omni_range = 14.0
-		l.light_energy = 1.6
+		l.light_energy = 1.1
 		add_child(l)
+	var spot := SpotLight3D.new()
+	spot.position = Vector3(0, 7, 0)
+	spot.rotation_degrees = Vector3(-90, 0, 0)
+	spot.spot_range = 12.0
+	spot.spot_angle = 28.0
+	spot.light_energy = 6.0
+	spot.light_color = Color(1.0, 0.95, 0.88)
+	add_child(spot)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 3.45
+	tm.outer_radius = 3.55
+	tm.rings = 64
+	tm.ring_segments = 4
+	ring.mesh = tm
+	ring.scale = Vector3(1, 0.1, 1)
+	ring.position.y = 0.04
+	ring.material_override = MeshBatch.mat("g_ring", UiTheme.ACCENT, 0.5, 2.5)
+	add_child(ring)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, 30, 0)
 	sun.light_energy = 0.5
@@ -102,7 +121,10 @@ func _show_car(id: String, color_idx: int) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	turntable.rotation.y += delta * 0.25
+	turntable.rotation.y += delta * 0.22
+	var a := 0.75 + sin(_t * 0.15) * 0.18
+	cam.position = Vector3(sin(a) * 7.2, 2.0 + sin(_t * 0.2) * 0.15, cos(a) * 7.2)
+	cam.look_at(Vector3(cos(a), 0, -sin(a)) * 2.1 + Vector3(0, 0.6, 0), Vector3.UP)
 
 
 # ------------------------------------------------------------------ giao diện
@@ -116,52 +138,112 @@ func _build_ui() -> void:
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cl.add_child(ui)
 
+	# Lớp tối dần hai bên cho chữ dễ đọc
+	for side in [0, 1]:
+		var g := Gradient.new()
+		g.set_color(0, Color(0.02, 0.03, 0.05, 0.85))
+		g.set_color(1, Color(0.02, 0.03, 0.05, 0.0))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill_from = Vector2(0, 0) if side == 0 else Vector2(1, 0)
+		gt.fill_to = Vector2(1, 0) if side == 0 else Vector2(0, 0)
+		var tr := TextureRect.new()
+		tr.texture = gt
+		tr.stretch_mode = TextureRect.STRETCH_SCALE
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if side == 0:
+			tr.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+			tr.offset_right = 520
+		else:
+			tr.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+			tr.offset_left = -700
+		ui.add_child(tr)
+
+	# Logo + tiêu đề
+	var logo := Control.new()
+	logo.position = Vector2(34, 30)
+	logo.size = Vector2(84, 84)
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	logo.draw.connect(func():
+		logo.draw_circle(Vector2(42, 42), 40, Color(UiTheme.ACCENT.r, UiTheme.ACCENT.g, UiTheme.ACCENT.b, 0.18))
+		logo.draw_arc(Vector2(42, 42), 30, 0, TAU, 40, UiTheme.ACCENT, 7.0, true)
+		logo.draw_circle(Vector2(42, 42), 8, UiTheme.ACCENT)
+		for ang: float in [PI, 0.0, PI * 0.5]:
+			logo.draw_line(Vector2(42, 42), Vector2(42, 42) + Vector2(cos(ang), sin(ang)) * 28, UiTheme.ACCENT, 6.0, true))
+	ui.add_child(logo)
 	var left := VBoxContainer.new()
-	left.position = Vector2(36, 26)
+	left.position = Vector2(132, 26)
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left.add_theme_constant_override("separation", 0)
 	ui.add_child(left)
-	title_label = UiTheme.label("LÁI XE 3D", 64, Color(1, 1, 1))
-	title_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	title_label.add_theme_constant_override("outline_size", 8)
+	title_label = UiTheme.label("LÁI XE 3D", 62, Color(1, 1, 1))
+	title_label.add_theme_font_override("font", Icons.bold_font(1.1))
 	title_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	left.add_child(title_label)
-	var sub := UiTheme.label("", 24, UiTheme.ACCENT)
+	var sub := UiTheme.label("", 22, UiTheme.ACCENT)
 	sub.name = "Sub"
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	left.add_child(sub)
 
-	var sp := PanelContainer.new()
-	sp.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	sp.offset_left = 28
-	sp.offset_top = -118
-	sp.offset_right = 520
-	sp.offset_bottom = -24
-	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ui.add_child(sp)
-	stats_label = UiTheme.label("", 21)
-	stats_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	sp.add_child(stats_label)
+	# Hàng chỉ số (xu, điểm, số lần đạt)
+	var chips := HBoxContainer.new()
+	chips.name = "Chips"
+	chips.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	chips.offset_left = 30
+	chips.offset_top = -86
+	chips.offset_bottom = -26
+	chips.add_theme_constant_override("separation", 12)
+	chips.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(chips)
+	stats_label = Label.new()   # giữ cho tương thích, không hiển thị
+	stats_label.visible = false
+	ui.add_child(stats_label)
 
 	panel = PanelContainer.new()
+	var ps := StyleBoxEmpty.new()
+	panel.add_theme_stylebox_override("panel", ps)
 	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	panel.offset_left = -520
+	panel.offset_left = -540
 	panel.offset_right = -24
-	panel.offset_top = 20
-	panel.offset_bottom = -20
+	panel.offset_top = 22
+	panel.offset_bottom = -18
 	ui.add_child(panel)
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(sc)
 	content = VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_constant_override("separation", 10)
+	content.add_theme_constant_override("separation", 12)
 	sc.add_child(content)
 
 
+func _chip(icon: String, text: String, col: Color) -> Control:
+	var c := Control.new()
+	var f := Icons.bold_font(0.6)
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + 70
+	c.custom_minimum_size = Vector2(w, 56)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func():
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.08, 0.1, 0.14, 0.85)
+		sb.set_corner_radius_all(28)
+		sb.border_color = Color(col.r, col.g, col.b, 0.5)
+		sb.set_border_width_all(2)
+		sb.anti_aliasing = true
+		c.draw_style_box(sb, Rect2(Vector2.ZERO, c.size))
+		Icons.draw(c, icon, Vector2(30, 28), 26, col)
+		c.draw_string(f, Vector2(52, 36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE))
+	return c
+
+
 func _update_stats() -> void:
-	stats_label.text = "%s: %d   ·   %s: %s\n%s: %d/100   ·   %s: %d/%d" % [
-		Game.t("money"), Game.money, Game.t("car"), Game.car_name(Game.car_id),
-		Game.t("best_score"), Game.exam_best, Game.t("exam_passes"), Game.exam_passes, Game.exam_tries]
+	var chips: HBoxContainer = ui.get_node("Chips")
+	for ch in chips.get_children():
+		ch.queue_free()
+	chips.add_child(_chip("coin", str(Game.money), Color(1.0, 0.8, 0.2)))
+	chips.add_child(_chip("trophy", "%s %d" % [Game.t("chip_best"), Game.exam_best], UiTheme.ACCENT))
+	chips.add_child(_chip("flag", "%s %d/%d" % [Game.t("chip_pass"), Game.exam_passes, Game.exam_tries], Color(0.45, 0.85, 1.0)))
 	var sub: Label = title_label.get_parent().get_node("Sub")
 	sub.text = Game.t("subtitle")
 
@@ -173,12 +255,43 @@ func _clear() -> void:
 
 
 func _header(text: String) -> void:
-	var l := UiTheme.label(text, 32, UiTheme.ACCENT)
-	content.add_child(l)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 14)
+	var bb := Button.new()
+	bb.custom_minimum_size = Vector2(60, 60)
+	bb.flat = true
+	bb.focus_mode = Control.FOCUS_NONE
+	bb.draw.connect(func():
+		bb.draw_circle(Vector2(30, 30), 28, Color(1, 1, 1, 0.12 if not bb.is_pressed() else 0.3))
+		Icons.draw(bb, "back", Vector2(30, 30), 30, Color.WHITE))
+	bb.pressed.connect(func():
+		Sfx.play("ui", -4.0)
+		_show_page("main"))
+	hb.add_child(bb)
+	var l := UiTheme.label(text, 34, Color.WHITE)
+	l.add_theme_font_override("font", Icons.bold_font(0.9))
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hb.add_child(l)
+	content.add_child(hb)
 
 
 func _back() -> void:
-	content.add_child(UiTheme.button("‹ " + Game.t("back"), func(): _show_page("main"), 58))
+	pass
+
+
+func _card(icon: String, title: String, sub: String, cb: Callable, h: int = 88, accent: Color = UiTheme.ACCENT) -> MenuCard:
+	var c := MenuCard.new()
+	c.icon_name = icon
+	c.title = title
+	c.sub = sub
+	c.accent = accent
+	c.custom_minimum_size = Vector2(0, h)
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c.pressed.connect(func():
+		Sfx.play("ui", -4.0)
+		cb.call())
+	return c
 
 
 func _show_page(p: String) -> void:
@@ -208,38 +321,41 @@ func _show_page(p: String) -> void:
 
 func _page_main() -> void:
 	var items := [
-		["menu_exam", func(): _show_page("exam")],
-		["menu_free", func(): _show_page("free")],
-		["menu_missions", func(): _show_page("missions")],
-		["menu_garage", func(): _show_page("garage")],
-		["menu_settings", func(): _show_page("settings")],
-		["menu_guide", func(): _show_page("guide")],
-		["menu_language", func(): _show_page("language")],
-		["menu_rate", func(): Game.open_rate_page()],
+		["flag", "menu_exam", "msub_exam", func(): _show_page("exam"), Color(0.98, 0.62, 0.12)],
+		["road", "menu_free", "msub_free", func(): _show_page("free"), Color(0.35, 0.8, 1.0)],
+		["target", "menu_missions", "msub_missions", func(): _show_page("missions"), Color(0.45, 0.9, 0.45)],
+		["car", "menu_garage", "msub_garage", func(): _show_page("garage"), Color(0.95, 0.4, 0.45)],
+		["gear", "menu_settings", "msub_settings", func(): _show_page("settings"), Color(0.7, 0.72, 0.8)],
+		["book", "menu_guide", "msub_guide", func(): _show_page("guide"), Color(0.75, 0.55, 1.0)],
+		["globe", "menu_language", "msub_language", func(): _show_page("language"), Color(0.3, 0.85, 0.75)],
+		["star", "menu_rate", "msub_rate", func(): Game.open_rate_page(), Color(1.0, 0.82, 0.2)],
 	]
-	for it in items:
-		var b := UiTheme.button(Game.t(it[0]), it[1], 70)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 28)
-		content.add_child(b)
+	# Thẻ lớn "Thi sa hình"
+	var first: Array = items[0]
+	var big := _card(first[0], Game.t(first[1]), Game.t(first[2]), first[3], 104, first[4])
+	content.add_child(big)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(grid)
+	for i in range(1, items.size()):
+		var it: Array = items[i]
+		grid.add_child(_card(it[0], Game.t(it[1]), Game.t(it[2]), it[3], 86, it[4]))
 
 
 func _page_exam() -> void:
 	_header(Game.t("menu_exam"))
-	var full := UiTheme.button(Game.t("exam_full"), func(): Game.start_drive("exam"), 76)
-	full.add_theme_font_size_override("font_size", 28)
-	content.add_child(full)
+	content.add_child(_card("play", Game.t("exam_full"), Game.t("msub_exam_full"), func(): Game.start_drive("exam"), 92))
 	content.add_child(UiTheme.label(Game.t("practice_title"), 22, Color(0.8, 0.85, 0.95)))
 	for i in range(1, 12):
 		var n := i
-		var done := " ✓" if Game.lessons_done.has(i) else ""
-		var b := UiTheme.button("%d. %s%s" % [i, Game.t("lesson_%d" % i), done], func():
+		var done: bool = Game.lessons_done.has(i)
+		var c := _card("check" if done else "flag", "%d. %s" % [i, Game.t("lesson_%d" % i)], Game.t("passed") if done else "", func():
 			Game.practice_lesson = n
-			Game.start_drive("practice"), 56)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 22)
-		content.add_child(b)
-	_back()
+			Game.start_drive("practice"), 64, Color(0.45, 0.9, 0.45) if done else Color(0.6, 0.65, 0.75))
+		content.add_child(c)
 
 
 func _toggle_row(options: Array, current: Variant, cb: Callable) -> HBoxContainer:
@@ -286,16 +402,19 @@ func _page_missions() -> void:
 			extra += " · " + Game.t("night")
 		if md["rain"]:
 			extra += " · " + Game.t("rainy")
-		var state := " ✓" if Game.missions_done.has(i) else ("" if unlocked else " (" + Game.t("locked") + ")")
-		var txt := "%d. %s%s — %d %s%s" % [i + 1, Game.t("mk_" + String(md["kind"])), extra, md["reward"], Game.t("coins"), state]
-		var b := UiTheme.button(txt, func():
+		var done: bool = Game.missions_done.has(i)
+		var kind: String = md["kind"]
+		var ic := {"park": "car", "parallel": "car", "taxi": "target", "delivery": "road"}[kind] as String
+		if done:
+			ic = "check"
+		if not unlocked:
+			ic = "lock"
+		var sub := "%d %s%s" % [md["reward"], Game.t("coins"), extra]
+		var c := _card(ic, "%d. %s" % [i + 1, Game.t("mk_" + kind)], sub, func():
 			Game.mission_id = idx
-			Game.start_drive("mission"), 58)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 21)
-		b.disabled = not unlocked
-		content.add_child(b)
-	_back()
+			Game.start_drive("mission"), 74, Color(0.45, 0.9, 0.45) if done else Color(1.0, 0.8, 0.2))
+		c.disabled = not unlocked
+		content.add_child(c)
 
 
 func _page_garage() -> void:
@@ -408,6 +527,11 @@ func _page_settings() -> void:
 
 func _page_guide() -> void:
 	_header(Game.t("menu_guide"))
+	var tb := UiTheme.button(Game.t("tut_try"), func():
+		Game.pending_mode = ""
+		Game.start_drive("tutorial"), 72)
+	tb.add_theme_font_size_override("font_size", 26)
+	content.add_child(tb)
 	var l := UiTheme.label(Game.t("guide_text"), 20)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_child(l)

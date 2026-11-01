@@ -292,7 +292,7 @@ func _physics_process(delta: float) -> void:
 	var power: float = spec["power"]
 	var top_ms: float = float(spec["top"]) / 3.6
 	var wrpm := _wheel_rpm()
-	var brake_v := brake_input * 38.0
+	var brake_v := brake_input * 55.0
 
 	if not engine_on:
 		rpm = move_toward(rpm, 0.0, delta * 3000.0)

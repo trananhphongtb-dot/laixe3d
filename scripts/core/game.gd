@@ -28,6 +28,8 @@ var exam_tries: int = 0
 var lessons_done: Dictionary = {}
 var missions_done: Dictionary = {}
 var rate_asked: bool = false
+var tutorial_done: bool = false
+var pending_mode: String = ""
 
 # Tham số cho lượt chơi sắp vào
 var mode: String = "exam"          # exam / practice / free / mission
@@ -138,6 +140,7 @@ func save_game() -> void:
 	c.set_value("main", "lessons_done", lessons_done)
 	c.set_value("main", "missions_done", missions_done)
 	c.set_value("main", "rate_asked", rate_asked)
+	c.set_value("main", "tutorial_done", tutorial_done)
 	c.save(SAVE_PATH)
 
 
@@ -163,6 +166,7 @@ func load_game() -> void:
 	lessons_done = c.get_value("main", "lessons_done", {})
 	missions_done = c.get_value("main", "missions_done", {})
 	rate_asked = c.get_value("main", "rate_asked", false)
+	tutorial_done = c.get_value("main", "tutorial_done", false)
 
 
 func mission_unlocked(i: int) -> bool:
@@ -184,6 +188,10 @@ func goto_menu() -> void:
 
 
 func start_drive(m: String) -> void:
+	# Lần đầu chơi: vào phần hướng dẫn có lái thử trước
+	if m != "tutorial" and not tutorial_done:
+		pending_mode = m
+		m = "tutorial"
 	mode = m
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/drive.tscn")

@@ -35,7 +35,7 @@ func _ready() -> void:
 	car.setup(Game.car_spec(), Game.COLORS[Game.car_color % Game.COLORS.size()], Game.settings.get("transmission", "auto") == "manual")
 	car.set_wet(rain)
 
-	if m == "exam" or m == "practice":
+	if m == "exam" or m == "practice" or m == "tutorial":
 		course = ExamCourse.new()
 		add_child(course)
 		add_child(car)
@@ -71,7 +71,13 @@ func _ready() -> void:
 	if env.has("rain"):
 		add_child(env["rain"])
 
-	if course:
+	if m == "tutorial":
+		car.global_transform = course.spawn_xf
+		var tut := Tutorial.new()
+		hud.root.add_child(tut)
+		tut.setup(hud, car)
+		tut.finished.connect(_on_tutorial_finished)
+	elif course:
 		course.finished.connect(_on_exam_finished)
 		course.start(car, hud, Game.practice_lesson if m == "practice" else 0)
 		if m == "exam":
@@ -221,6 +227,23 @@ func _on_mission_finished(success: bool, _reward: int, details: String) -> void:
 			Game.mission_id += 1
 			Game.start_drive("mission")])
 	UiTheme.dialog(hud, title, details, buttons, Color(0.4, 1.0, 0.5) if success else Color(1.0, 0.4, 0.3))
+
+
+func _on_tutorial_finished(_skipped: bool) -> void:
+	Game.tutorial_done = true
+	Game.save_game()
+	var pend := Game.pending_mode
+	Game.pending_mode = ""
+	if pend != "":
+		Game.start_drive(pend)
+		return
+	_result_shown = true
+	UiTheme.dialog(hud, Game.t("tut_finished"), Game.t("tut_finished_body"), [
+		[Game.t("exam_full"), func(): Game.start_drive("exam")],
+		[Game.t("tut_keep"), func():
+			_result_shown = false],
+		[Game.t("to_menu"), func(): Game.goto_menu()],
+	], Color(0.45, 1.0, 0.55))
 
 
 func _ask_rate() -> void:

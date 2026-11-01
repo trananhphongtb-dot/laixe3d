@@ -1,6 +1,6 @@
 class_name Gauges
 extends Control
-## Cụm đồng hồ: tốc độ (km/h) và vòng tua (x1000 v/ph), kèm đèn báo.
+## Cụm đồng hồ số kiểu xe đời mới: tốc độ km/h lớn ở giữa, số, vạch vòng tua, đèn báo.
 
 var speed: float = 0.0
 var rpm: float = 0.0
@@ -12,79 +12,98 @@ var handbrake: bool = false
 var lights: bool = false
 var engine_on: bool = true
 var max_speed: float = 200.0
+var _bold: Font
+var _shown_speed: float = 0.0
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-func _process(_d: float) -> void:
+func _process(delta: float) -> void:
+	_shown_speed = lerpf(_shown_speed, speed, clampf(delta * 8.0, 0.0, 1.0))
 	queue_redraw()
 
 
-func _dial(c: Vector2, r: float, value: float, vmax: float, step: float, label_div: float, red_from: float, unit: String) -> void:
-	var a0 := deg_to_rad(140.0)
-	var a1 := deg_to_rad(400.0)
-	draw_circle(c, r, Color(0.04, 0.05, 0.07, 0.78))
-	draw_arc(c, r, 0, TAU, 48, Color(1, 1, 1, 0.35), 2.0, true)
-	if red_from < vmax:
-		var ar := a0 + (a1 - a0) * red_from / vmax
-		draw_arc(c, r - 6, ar, a1, 16, Color(0.9, 0.15, 0.1, 0.9), 6.0, true)
-	var f := get_theme_default_font()
-	var v := 0.0
-	var fs := int(r * 0.16)
-	while v <= vmax + 0.01:
-		var a := a0 + (a1 - a0) * v / vmax
-		var dir := Vector2(cos(a), sin(a))
-		draw_line(c + dir * (r - 4), c + dir * (r - 14), Color(1, 1, 1, 0.85), 2.0, true)
-		var txt := str(int(round(v / label_div)))
-		var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(f, c + dir * (r - 28) + Vector2(-tw * 0.5, fs * 0.35), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.8))
-		v += step
-	var a_n := a0 + (a1 - a0) * clampf(value / vmax, 0.0, 1.05)
-	var nd := Vector2(cos(a_n), sin(a_n))
-	draw_line(c - nd * 8, c + nd * (r - 10), Color(1.0, 0.35, 0.1), 4.0, true)
-	draw_circle(c, 7, Color(0.85, 0.85, 0.85))
-	var uw := f.get_string_size(unit, HORIZONTAL_ALIGNMENT_LEFT, -1, int(r * 0.13)).x
-	draw_string(f, c + Vector2(-uw * 0.5, r * 0.62), unit, HORIZONTAL_ALIGNMENT_LEFT, -1, int(r * 0.13), Color(1, 1, 1, 0.6))
-
-
 func _draw() -> void:
-	var r := minf(size.y * 0.5, size.x * 0.25) - 4
-	var cl := Vector2(r + 4, size.y * 0.5)
-	var cr := Vector2(size.x - r - 4, size.y * 0.5)
-	var vmax := 220.0 if max_speed > 190 else 180.0
-	_dial(cl, r, rpm, 8000.0, 1000.0, 1000.0, 6500.0, "x1000 v/ph")
-	_dial(cr, r, speed, vmax, 20.0, 1.0, vmax + 1.0, "km/h")
+	if _bold == null:
+		_bold = Icons.bold_font(1.0)
 	var f := get_theme_default_font()
-	# Ô giữa: số và tốc độ dạng số
-	var mid := Vector2(size.x * 0.5, size.y * 0.5)
-	var box := Rect2(mid - Vector2(52, 44), Vector2(104, 88))
+	var r := Rect2(Vector2.ZERO, size)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.04, 0.05, 0.07, 0.78)
-	sb.set_corner_radius_all(10)
-	draw_style_box(sb, box)
-	var st := str(int(round(speed)))
-	var fs := 34
-	var tw := f.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	draw_string(f, mid + Vector2(-tw * 0.5, -2), st, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
-	var gw := f.get_string_size(gear_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
-	draw_string(f, mid + Vector2(-gw * 0.5, 34), gear_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.4, 0.9, 1.0))
-	# Đèn báo xi nhan
-	var y := box.position.y - 14
-	var gcol := Color(0.15, 0.95, 0.3)
-	var off := Color(1, 1, 1, 0.12)
-	var lc := gcol if blink_l else off
-	var rc := gcol if blink_r else off
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x - 48, y), Vector2(mid.x - 30, y - 11), Vector2(mid.x - 30, y + 11)]), lc)
-	draw_colored_polygon(PackedVector2Array([Vector2(mid.x + 48, y), Vector2(mid.x + 30, y - 11), Vector2(mid.x + 30, y + 11)]), rc)
-	# Dây an toàn / phanh tay / đèn / máy
-	var iy := box.end.y + 18
+	sb.bg_color = Color(0.02, 0.03, 0.05, 0.72)
+	sb.set_corner_radius_all(26)
+	sb.border_color = Color(1, 1, 1, 0.12)
+	sb.set_border_width_all(2)
+	sb.anti_aliasing = true
+	draw_style_box(sb, r)
+	var cx := size.x * 0.5
+
+	# Tốc độ
+	var st := str(int(round(_shown_speed)))
+	var fs := 64
+	var tw := _bold.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	draw_string(_bold, Vector2(cx - tw * 0.5, 86), st, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+	var unit := "km/h"
+	var uw := f.get_string_size(unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	draw_string(f, Vector2(cx - uw * 0.5, 108), unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.6, 0.85, 1.0, 0.9))
+
+	# Số (bên trái)
+	var gr := Rect2(Vector2(18, 40), Vector2(70, 60))
+	var gs := StyleBoxFlat.new()
+	var gcol := Color(0.98, 0.62, 0.12)
+	if gear_text == "R":
+		gcol = Color(0.95, 0.3, 0.25)
+	elif gear_text == "N" or gear_text == "P":
+		gcol = Color(0.55, 0.6, 0.7)
+	gs.bg_color = Color(gcol.r, gcol.g, gcol.b, 0.22)
+	gs.border_color = gcol
+	gs.set_border_width_all(2)
+	gs.set_corner_radius_all(12)
+	gs.anti_aliasing = true
+	draw_style_box(gs, gr)
+	var gfs := 34 if gear_text.length() <= 1 else 28
+	var gw := _bold.get_string_size(gear_text, HORIZONTAL_ALIGNMENT_LEFT, -1, gfs).x
+	draw_string(_bold, Vector2(gr.get_center().x - gw * 0.5, gr.get_center().y + gfs * 0.36), gear_text, HORIZONTAL_ALIGNMENT_LEFT, -1, gfs, gcol)
+
+	# Vòng tua (bên phải): số + chữ
+	var rr := Rect2(Vector2(size.x - 88, 40), Vector2(70, 60))
+	var rtxt := "%.1f" % (rpm / 1000.0)
+	var rw := _bold.get_string_size(rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
+	var rcol := Color.WHITE if rpm < 4000.0 else (Color(1.0, 0.75, 0.2) if rpm < 6000.0 else Color(1.0, 0.3, 0.25))
+	draw_string(_bold, Vector2(rr.get_center().x - rw * 0.5, rr.get_center().y + 4), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, rcol)
+	var lab := "x1000"
+	var lw := f.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	draw_string(f, Vector2(rr.get_center().x - lw * 0.5, rr.get_center().y + 24), lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.55))
+
+	# Thanh vòng tua dạng vạch
+	var n := 24
+	var bx := 22.0
+	var bw := size.x - 44.0
+	var seg := bw / n
+	var lit := int(clampf(rpm / 7000.0, 0.0, 1.0) * n + 0.5)
+	for i in n:
+		var t := float(i) / (n - 1)
+		var c := Color(0.25, 0.85, 0.45).lerp(Color(1.0, 0.8, 0.2), clampf(t * 1.8 - 0.4, 0.0, 1.0))
+		if t > 0.82:
+			c = Color(1.0, 0.3, 0.25)
+		if i >= lit:
+			c = Color(1, 1, 1, 0.1)
+		var h := 6.0 + t * 8.0
+		draw_rect(Rect2(Vector2(bx + i * seg + 1, size.y - 14 - h), Vector2(seg - 3, h)), c)
+
+	# Đèn báo trên cùng
+	var y := 22.0
+	var on := Color(0.15, 1.0, 0.4)
+	var off := Color(1, 1, 1, 0.1)
+	Icons.draw(self, "arrow_l", Vector2(cx - 120, y), 24, on if blink_l else off)
+	Icons.draw(self, "arrow_r", Vector2(cx + 120, y), 24, on if blink_r else off)
+	var x := cx - 60.0
 	if not belt:
-		draw_string(f, Vector2(mid.x - 50, iy), Game.t("g_belt"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.2, 0.2))
+		Icons.draw(self, "belt", Vector2(x, y), 22, Color(1.0, 0.25, 0.2))
 	if handbrake:
-		draw_string(f, Vector2(mid.x + 4, iy), "(P)", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 0.2, 0.2))
+		Icons.draw(self, "handbrake", Vector2(cx - 20, y), 20, Color(1.0, 0.25, 0.2), 2.0)
 	if lights:
-		draw_circle(Vector2(mid.x + 44, iy - 6), 6, Color(0.3, 0.6, 1.0))
+		Icons.draw(self, "light", Vector2(cx + 20, y), 22, Color(0.3, 0.65, 1.0))
 	if not engine_on:
-		draw_string(f, Vector2(mid.x - 26, box.position.y - 30), Game.t("g_engine"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.6, 0.1))
+		Icons.draw(self, "key", Vector2(cx + 60, y), 22, Color(1.0, 0.6, 0.1))

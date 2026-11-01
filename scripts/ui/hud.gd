@@ -10,7 +10,8 @@ var root: Control
 var steer: TouchSteer
 var btn_left: TouchCtl
 var btn_right: TouchCtl
-var gas: TouchPedal
+var gas: TouchThrottle
+var cam_btn: TouchCtl
 var brake_p: TouchPedal
 var clutch_p: TouchPedal
 var gauges: Gauges
@@ -82,7 +83,10 @@ func _add_touch(c: TouchCtl) -> TouchCtl:
 func _btn(icon: String, text: String, preset: int, pos: Vector2, sz: Vector2) -> TouchCtl:
 	var b := TouchCtl.new()
 	b.icon = icon
-	b.label = text
+	if icon != "":
+		b.caption = text
+	else:
+		b.label = text
 	_anchor(b, preset, pos, sz)
 	return _add_touch(b)
 
@@ -97,86 +101,98 @@ func _build_controls() -> void:
 		_anchor(steer, BL, Vector2(18, -306), Vector2(290, 290))
 		_add_touch(steer)
 	elif ctrl == "buttons":
-		btn_left = _btn("arrow_l", "", BL, Vector2(20, -170), Vector2(140, 150))
-		btn_right = _btn("arrow_r", "", BL, Vector2(176, -170), Vector2(140, 150))
+		btn_left = _btn("arrow_l", "", BL, Vector2(20, -176), Vector2(140, 150))
+		btn_left.rounded = false
+		btn_right = _btn("arrow_r", "", BL, Vector2(176, -176), Vector2(140, 150))
+		btn_right.rounded = false
 
-	# Bàn đạp
-	gas = TouchPedal.new()
+	# Cần ga dạng thanh trượt
+	gas = TouchThrottle.new()
 	gas.label = Game.t("hud_gas")
-	gas.color = Color(0.15, 0.55, 0.25)
-	_anchor(gas, BR, Vector2(-128, -262), Vector2(112, 246))
+	_anchor(gas, BR, Vector2(-134, -350), Vector2(120, 334))
 	_add_touch(gas)
+	# Phanh
 	brake_p = TouchPedal.new()
 	brake_p.label = Game.t("hud_brake")
-	brake_p.color = Color(0.6, 0.15, 0.12)
-	_anchor(brake_p, BR, Vector2(-268, -212), Vector2(132, 196))
+	brake_p.color = Color(0.72, 0.16, 0.14)
+	_anchor(brake_p, BR, Vector2(-270, -240), Vector2(128, 224))
 	_add_touch(brake_p)
-	var gx := -360.0
+	brake_p.pressed.connect(func(): gas.set_value(0.0))
+	var gx := -364.0
 	if car.manual:
 		clutch_p = TouchPedal.new()
 		clutch_p.label = Game.t("hud_clutch")
-		clutch_p.color = Color(0.25, 0.3, 0.55)
-		_anchor(clutch_p, BR, Vector2(-390, -196), Vector2(114, 180))
+		clutch_p.color = Color(0.25, 0.35, 0.7)
+		clutch_p.instant = true
+		clutch_p.press_rate = 20.0
+		_anchor(clutch_p, BR, Vector2(-392, -220), Vector2(116, 204))
 		_add_touch(clutch_p)
-		gx = -476.0
-		var up := _btn("up", "", BR, Vector2(gx, -196), Vector2(78, 84))
+		gx = -490.0
+		var up := _btn("up", "", BR, Vector2(gx, -214), Vector2(84, 92))
+		up.rounded = false
 		up.pressed.connect(func(): car.shift_manual(1))
-		var dn := _btn("down", "", BR, Vector2(gx, -100), Vector2(78, 84))
+		var dn := _btn("down", "", BR, Vector2(gx, -112), Vector2(84, 92))
+		dn.rounded = false
 		dn.pressed.connect(func(): car.shift_manual(-1))
-		b_key = _btn("", Game.t("hud_start"), BR, Vector2(gx, -290), Vector2(78, 80))
-		b_key.toggle_color = Color(0.9, 0.5, 0.1)
+		b_key = _btn("key", Game.t("hud_start"), BR, Vector2(gx + 6, -300), Vector2(72, 72))
+		b_key.toggle_color = Color(0.95, 0.5, 0.1)
 		b_key.pressed.connect(func(): car.start_engine())
 	else:
 		var modes := ["P", "R", "N", "D"]
 		for i in 4:
 			var m: String = modes[i]
-			var b := _btn("", m, BR, Vector2(gx, -300 + i * 72), Vector2(76, 64))
-			b.font_size = 28
-			b.toggle_color = Color(0.95, 0.55, 0.1)
+			var b := _btn("", m, BR, Vector2(gx, -300 + i * 72), Vector2(80, 66))
+			b.label = m
+			b.rounded = false
+			b.font_size = 30
+			b.toggle_color = Color(0.98, 0.58, 0.1)
 			b.pressed.connect(func(): car.set_auto_mode(m))
 			gear_btns[m] = b
 
 	# Xi nhan + khẩn cấp (phía trên vô lăng)
-	b_blink_l = _btn("arrow_l", "", BL, Vector2(20, -400), Vector2(84, 74))
-	b_blink_l.toggle_color = Color(0.15, 0.85, 0.3)
+	b_blink_l = _btn("arrow_l", "", BL, Vector2(22, -398), Vector2(82, 70))
+	b_blink_l.rounded = false
+	b_blink_l.toggle_color = Color(0.15, 0.8, 0.35)
 	b_blink_l.blink = true
 	b_blink_l.pressed.connect(func(): car.toggle_blinker(-1))
-	b_hazard = _btn("hazard", "", BL, Vector2(114, -400), Vector2(84, 74))
+	b_hazard = _btn("hazard", "", BL, Vector2(114, -398), Vector2(82, 70))
+	b_hazard.rounded = false
 	b_hazard.toggle_color = Color(0.9, 0.2, 0.15)
 	b_hazard.blink = true
 	b_hazard.pressed.connect(func(): car.toggle_blinker(2))
-	b_blink_r = _btn("arrow_r", "", BL, Vector2(208, -400), Vector2(84, 74))
-	b_blink_r.toggle_color = Color(0.15, 0.85, 0.3)
+	b_blink_r = _btn("arrow_r", "", BL, Vector2(206, -398), Vector2(82, 70))
+	b_blink_r.rounded = false
+	b_blink_r.toggle_color = Color(0.15, 0.8, 0.35)
 	b_blink_r.blink = true
 	b_blink_r.pressed.connect(func(): car.toggle_blinker(1))
 
-	# Hàng nút trên bên phải
-	var x := -96.0
-	var pause := _btn("pause", "", TR, Vector2(x, 12), Vector2(84, 70))
+	# Hàng nút tròn trên bên phải
+	var x := -88.0
+	var pause := _btn("pause", "", TR, Vector2(x, 12), Vector2(74, 74))
 	pause.pressed.connect(func(): pause_requested.emit())
-	x -= 94
-	var cam := _btn("", Game.t("hud_cam"), TR, Vector2(x, 12), Vector2(84, 70))
-	cam.pressed.connect(func(): camera_toggle.emit())
-	x -= 94
-	b_hb = _btn("", Game.t("hud_handbrake"), TR, Vector2(x, 12), Vector2(84, 70))
+	x -= 84
+	cam_btn = _btn("cam", Game.t("hud_cam"), TR, Vector2(x, 12), Vector2(74, 74))
+	cam_btn.pressed.connect(func(): camera_toggle.emit())
+	x -= 84
+	b_hb = _btn("handbrake", Game.t("hud_handbrake"), TR, Vector2(x, 12), Vector2(74, 74))
 	b_hb.toggle_color = Color(0.85, 0.15, 0.1)
 	b_hb.pressed.connect(func():
 		car.handbrake = not car.handbrake
 		Sfx.play("shift", -8.0))
-	x -= 94
-	b_light = _btn("", Game.t("hud_lights"), TR, Vector2(x, 12), Vector2(84, 70))
+	x -= 84
+	b_light = _btn("light", Game.t("hud_lights"), TR, Vector2(x, 12), Vector2(74, 74))
 	b_light.toggle_color = Color(0.25, 0.55, 1.0)
 	b_light.pressed.connect(func():
 		car.set_lights(not car.lights_on)
 		Sfx.play("ui", -6.0))
-	x -= 94
-	b_belt = _btn("", Game.t("hud_belt"), TR, Vector2(x, 12), Vector2(84, 70))
-	b_belt.toggle_color = Color(0.15, 0.75, 0.35)
+	x -= 84
+	b_belt = _btn("belt", Game.t("hud_belt"), TR, Vector2(x, 12), Vector2(74, 74))
+	b_belt.toggle_color = Color(0.15, 0.72, 0.38)
 	b_belt.pressed.connect(func():
 		car.seatbelt = not car.seatbelt
 		Sfx.play("shift", -6.0))
-	x -= 94
-	b_horn = _btn("", Game.t("hud_horn"), TR, Vector2(x, 12), Vector2(84, 70))
+	x -= 84
+	b_horn = _btn("horn", Game.t("hud_horn"), TR, Vector2(x, 12), Vector2(74, 74))
 	b_horn.pressed.connect(func(): car.set_horn(true))
 	b_horn.released.connect(func(): car.set_horn(false))
 
@@ -184,8 +200,8 @@ func _build_controls() -> void:
 func _build_gauges() -> void:
 	gauges = Gauges.new()
 	gauges.max_speed = float(car.spec["top"])
-	var gx := -270.0 if car.manual else -190.0
-	_anchor(gauges, Control.PRESET_CENTER_BOTTOM, Vector2(gx, -178), Vector2(380, 168))
+	var gx := -250.0 if car.manual else -180.0
+	_anchor(gauges, Control.PRESET_CENTER_BOTTOM, Vector2(gx, -164), Vector2(360, 150))
 	root.add_child(gauges)
 
 
@@ -437,18 +453,20 @@ func _process(delta: float) -> void:
 		kb_s -= 1.0
 	if kb_s != 0.0:
 		s = kb_s
-	var thr := gas.value if gas.held else 0.0
-	var brk := brake_p.value if brake_p.held else 0.0
+	var thr := gas.value
+	var brk := brake_p.value
 	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
 		thr = 1.0
 	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
 		brk = 1.0
-	var clu := clutch_p != null and clutch_p.held
+		gas.set_value(0.0)
+	var clu := clutch_p != null and clutch_p.value > 0.5
 	if Input.is_key_pressed(KEY_SHIFT):
 		clu = true
 	if not controls_enabled:
 		thr = 0.0
 		brk = 0.0
+		gas.set_value(0.0)
 	car.steer_input = s
 	car.throttle = thr
 	car.brake_input = brk

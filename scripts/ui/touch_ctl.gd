@@ -6,13 +6,18 @@ signal pressed
 signal released
 
 var held: bool = false
-var label: String = ""
-var icon: String = ""          # arrow_l, arrow_r, hazard, horn, light, belt, cam, pause, key, hb, up, down
-var active: bool = false       # trạng thái bật (đèn sáng)
-var blink: bool = false        # nhấp nháy khi active
+var label: String = ""         # chữ lớn ở giữa (P R N D...)
+var caption: String = ""       # chú thích nhỏ dưới biểu tượng
+var icon: String = ""
+var active: bool = false
+var blink: bool = false
 var toggle_color := Color(0.2, 0.75, 0.35)
-var font_size: int = 22
+var font_size: int = 26
+var rounded: bool = true
 var _touch_id: int = -1
+var _flash: float = 0.0
+
+static var _bold: Font
 
 
 func _init() -> void:
@@ -22,6 +27,7 @@ func _init() -> void:
 func touch_down(id: int, _pos: Vector2) -> void:
 	_touch_id = id
 	held = true
+	_flash = 1.0
 	pressed.emit()
 	queue_redraw()
 
@@ -38,55 +44,47 @@ func touch_up(_id: int) -> void:
 
 
 func _draw() -> void:
-	var r := Rect2(Vector2.ZERO, size)
-	var bg := Color(0, 0, 0, 0.42)
-	if held:
-		bg = Color(1, 1, 1, 0.35)
-	elif active and (not blink or Engine.get_process_frames() % 40 < 20):
-		bg = Color(toggle_color.r, toggle_color.g, toggle_color.b, 0.75)
+	if _bold == null:
+		_bold = Icons.bold_font(0.7)
+	var r := Rect2(Vector2(2, 2), size - Vector2(4, 4))
+	var lit := active and (not blink or Engine.get_process_frames() % 40 < 22)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(int(min(size.x, size.y) * 0.25))
-	sb.border_color = Color(1, 1, 1, 0.5)
+	sb.bg_color = Color(0.03, 0.04, 0.06, 0.42)
+	if lit:
+		sb.bg_color = Color(toggle_color.r, toggle_color.g, toggle_color.b, 0.82)
+	if held:
+		sb.bg_color = sb.bg_color.lerp(Color(1, 1, 1, 0.5), 0.45)
+	var rad := int(minf(r.size.x, r.size.y) * (0.5 if rounded else 0.22))
+	sb.set_corner_radius_all(rad)
+	sb.border_color = Color(1, 1, 1, 0.22) if not lit else Color(1, 1, 1, 0.55)
 	sb.set_border_width_all(2)
+	sb.shadow_color = Color(0, 0, 0, 0.25)
+	sb.shadow_size = 4
+	sb.anti_aliasing = true
 	draw_style_box(sb, r)
+	var col := Color(1, 1, 1, 0.95)
 	var c := size * 0.5
 	var s := minf(size.x, size.y)
-	var col := Color(1, 1, 1, 0.95)
-	match icon:
-		"arrow_l":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(-s * 0.3, 0), c + Vector2(s * 0.05, -s * 0.25), c + Vector2(s * 0.05, s * 0.25)]), col)
-			draw_rect(Rect2(c + Vector2(0, -s * 0.09), Vector2(s * 0.25, s * 0.18)), col)
-		"arrow_r":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(s * 0.3, 0), c + Vector2(-s * 0.05, -s * 0.25), c + Vector2(-s * 0.05, s * 0.25)]), col)
-			draw_rect(Rect2(c + Vector2(-s * 0.25, -s * 0.09), Vector2(s * 0.25, s * 0.18)), col)
-		"hazard":
-			var p := PackedVector2Array([c + Vector2(0, -s * 0.3), c + Vector2(s * 0.3, s * 0.22), c + Vector2(-s * 0.3, s * 0.22), c + Vector2(0, -s * 0.3)])
-			draw_polyline(p, Color(1, 0.3, 0.2) if not active else col, 4.0)
-			var p2 := PackedVector2Array([c + Vector2(0, -s * 0.12), c + Vector2(s * 0.13, s * 0.11), c + Vector2(-s * 0.13, s * 0.11), c + Vector2(0, -s * 0.12)])
-			draw_polyline(p2, Color(1, 0.3, 0.2) if not active else col, 3.0)
-		"up":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -s * 0.28), c + Vector2(s * 0.28, s * 0.18), c + Vector2(-s * 0.28, s * 0.18)]), col)
-		"down":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, s * 0.28), c + Vector2(s * 0.28, -s * 0.18), c + Vector2(-s * 0.28, -s * 0.18)]), col)
-		"pause":
-			draw_rect(Rect2(c + Vector2(-s * 0.18, -s * 0.22), Vector2(s * 0.12, s * 0.44)), col)
-			draw_rect(Rect2(c + Vector2(s * 0.06, -s * 0.22), Vector2(s * 0.12, s * 0.44)), col)
-		_:
-			pass
+	if icon != "":
+		var ic := c - Vector2(0, s * 0.08 if caption != "" else 0.0)
+		Icons.draw(self, icon, ic, s * (0.42 if caption != "" else 0.5), col)
 	if label != "":
-		var f := get_theme_default_font()
 		var fs := font_size
-		var tw := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		while tw > size.x - 8 and fs > 10:
+		var tw := _bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		while tw > size.x - 10 and fs > 10:
 			fs -= 1
-			tw = f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var y := c.y + fs * 0.35
-		if icon != "":
-			y = size.y - 6
-		draw_string(f, Vector2(c.x - tw * 0.5, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+			tw = _bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(_bold, Vector2(c.x - tw * 0.5, c.y + fs * 0.36), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+	if caption != "":
+		var f := get_theme_default_font()
+		var cs := 12
+		var cw := f.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, cs).x
+		while cw > size.x - 6 and cs > 8:
+			cs -= 1
+			cw = f.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, cs).x
+		draw_string(f, Vector2(c.x - cw * 0.5, size.y - s * 0.14), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, cs, Color(1, 1, 1, 0.75))
 
 
-func _process(_d: float) -> void:
+func _process(delta: float) -> void:
 	if blink and active:
 		queue_redraw()
