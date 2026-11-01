@@ -114,6 +114,8 @@ func _build_controls() -> void:
 	# Cần ga dạng thanh trượt
 	gas = TouchThrottle.new()
 	gas.label = Game.t("hud_gas")
+	if not car.manual:
+		gas.speed_scale = PlayerCar.GAS_KMH
 	_anchor(gas, BR, Vector2(-134, -350), Vector2(120, 334))
 	_add_touch(gas)
 	# Phanh
@@ -474,6 +476,11 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if car == null:
 		return
+	if not car.manual:
+		var sc := PlayerCar.GAS_REV_KMH if car.auto_mode == "R" else PlayerCar.GAS_KMH
+		if gas.speed_scale != sc:
+			gas.speed_scale = sc
+			gas.queue_redraw()
 	# Gom đầu vào
 	var s := 0.0
 	var ctrl: String = Game.settings.get("control", "wheel")

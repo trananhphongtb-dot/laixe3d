@@ -14,6 +14,7 @@ var fill_color := Color(0.2, 0.85, 0.4)
 var hot_color := Color(1.0, 0.45, 0.15)
 var top_label := ""          # chữ nhỏ ở đỉnh (vd "mạnh")
 var bottom_label := ""       # chữ nhỏ ở đáy (vd "rà")
+var speed_scale: float = 0.0 # > 0: hiện tốc độ tương ứng (km/h) thay cho %
 var _last_y: float = 0.0
 var _still_t: float = 0.0
 var _decay_from: float = 0.0
@@ -118,7 +119,9 @@ func _draw() -> void:
 		var yy := level_y - 6 + k * 6
 		draw_line(Vector2(hr.position.x + 18, yy), Vector2(hr.end.x - 18, yy), Color(0, 0, 0, 0.25), 2.0)
 	var pct := "%d%%" % int(round(value * 100.0))
-	var fs := 22
+	if speed_scale > 0.0:
+		pct = "%d km/h" % int(round(value * speed_scale))
+	var fs := 22 if speed_scale <= 0.0 else 19
 	var tw := _bold.get_string_size(pct, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	var ty := level_y - 24 if level_y - 24 > top - 6 else level_y + 42
 	draw_string(_bold, Vector2(size.x * 0.5 - tw * 0.5, ty), pct, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.85, 0.3) if fixing else Color.WHITE)

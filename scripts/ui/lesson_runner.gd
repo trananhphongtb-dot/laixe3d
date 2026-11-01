@@ -29,7 +29,9 @@ var _warn_cool: Dictionary = {}
 var _note: String = ""
 var _note_good: bool = true
 var _skip_c: Vector3 = Vector3(1e9, 0, 1e9)   # bài 2: ngã tư đã hỏng, bỏ qua để làm ở ngã tư sau
-var _turn_j: Dictionary = {}                  # bài 2: ngã tư đang rẽ
+var _turn_j: Dictionary = {}
+var _snap: Dictionary = {}                    # trạng thái xe lúc bắt đầu bước hiện tại (để "Làm lại")
+var _fail_dlg: Control                  # bài 2: ngã tư đang rẽ
 
 var card: PanelContainer
 var title_l: Label
@@ -37,7 +39,6 @@ var body_l: Label
 var note_l: Label
 var hint_l: Label
 var next_b: Button
-var again_b: Button
 
 var _holding: bool = false
 var _hold_xf: Transform3D
@@ -584,10 +585,6 @@ func _build_card() -> void:
 	hb.add_theme_constant_override("separation", 12)
 	hb.alignment = BoxContainer.ALIGNMENT_END
 	vb.add_child(hb)
-	again_b = UiTheme.button(Game.t("ls_retry"), func(): Game.start_drive("lesson"), 60)
-	again_b.custom_minimum_size.x = 160
-	again_b.add_theme_font_size_override("font_size", 22)
-	hb.add_child(again_b)
 	next_b = UiTheme.button(Game.t("tut_next"), func(): _on_next(), 60)
 	next_b.custom_minimum_size.x = 190
 	next_b.add_theme_font_size_override("font_size", 26)
@@ -648,7 +645,6 @@ func _set_compact(v: bool) -> void:
 		note_l.visible = false
 		title_l.visible = false
 		hint_l.visible = false
-		again_b.visible = false
 		next_b.visible = false
 		card.modulate.a = 0.9
 		hud.gate_ctls = []
@@ -665,7 +661,6 @@ func _set_compact(v: bool) -> void:
 		body_l.add_theme_font_size_override("font_size", 30)
 		body_l.custom_minimum_size = Vector2(640, 0)
 		title_l.visible = true
-		again_b.visible = true
 		card.modulate.a = 1.0
 		var s: Dictionary = steps[idx]
 		var gate := _gate_for(s)
@@ -680,8 +675,8 @@ func _set_compact(v: bool) -> void:
 	queue_redraw()
 
 
-func _pause(v: bool) -> void:
-	if not guided:
+func _pause(v: bool, always: bool = false) -> void:
+	if not guided and not always:
 		return
 	# Giữ xe đứng yên tại chỗ trong lúc đọc; ga/phanh/số/vô lăng giữ nguyên mức
 	if v and not _holding:
@@ -724,6 +719,8 @@ func _go(i: int, again: bool = false) -> void:
 	note_l.add_theme_color_override("font_color", Color(0.45, 1.0, 0.55) if _note_good else Color(1.0, 0.5, 0.35))
 	note_l.visible = _note != ""
 	_note = ""
+	if not tap:
+		_snap = _snapshot()
 	if s.has("enter"):
 		(s["enter"] as Callable).call()
 	if guided:
@@ -731,45 +728,80 @@ func _go(i: int, again: bool = false) -> void:
 	queue_redraw()
 
 
+func _snapshot() -> Dictionary:
+	var d := {"xf": car.global_transform, "lv": car.linear_velocity, "av": car.angular_velocity,
+		"mode": car.auto_mode, "gear": car.gear, "blink": car.blinker, "hb": car.handbrake, "belt": car.seatbelt,
+		"gas": hud.gas.value, "gas_l": hud.gas.locked, "brake": hud.brake_p.value, "brake_l": hud.brake_p.locked, "inst": inst}
+	if _holding:
+		d["xf"] = _hold_xf
+		d["lv"] = _hold_vel[0]
+		d["av"] = _hold_vel[1]
+	return d
+
+
+func _restore(d: Dictionary) -> void:
+	if d.is_empty():
+		return
+	car.global_transform = d["xf"]
+	car.linear_velocity = d["lv"]
+	car.angular_velocity = d["av"]
+	_hold_xf = d["xf"]
+	_hold_vel = [d["lv"], d["av"]]
+	car.auto_mode = d["mode"]
+	car.gear = d["gear"]
+	car.blinker = d["blink"]
+	car.handbrake = d["hb"]
+	car.seatbelt = d["belt"]
+	hud.gas.set_value(d["gas"])
+	hud.gas.locked = d["gas_l"]
+	hud.brake_p.set_value(d["brake"])
+	hud.brake_p.locked = d["brake_l"]
+	inst = d["inst"]
+	_skip_c = Vector3(1e9, 0, 1e9)
+	_stop_t = 0.0
+
+
+## Bỏ chỉ thị cũ ở đầu lời báo lỗi ("@next:", "@skip:", "@redo_next:id:")
+static func _clean(msg: String) -> String:
+	if msg.begins_with("@redo_next:") or msg.begins_with("@redo:"):
+		var rest := msg.substr(msg.find(":") + 1)
+		return rest.substr(rest.find(":") + 1)
+	if msg.begins_with("@"):
+		return msg.substr(msg.find(":") + 1)
+	return msg
+
+
+## Sai bước: xe dừng, hiện bảng lỗi với 2 lựa chọn
+##  - Làm lại: xe quay về đúng lúc vừa xong bước trước (vị trí, tốc độ, số, xi nhan, ga/phanh) để làm lại bước này
+##  - Tiếp tục: đóng bảng, xe chạy tiếp như thường, bước này tính là chưa đạt
 func _fail(msg: String) -> void:
-	var target := idx
-	var go_next := false
-	if msg.begins_with("@skip:"):
-		target = idx + 1
-		msg = msg.substr(6)
-	elif msg.begins_with("@next:"):
-		go_next = true
-		msg = msg.substr(6)
-	elif msg.begins_with("@redo_next:"):
-		go_next = true
-		var rest := msg.substr(11)
-		var p := rest.find(":")
-		target = _step_index(rest.substr(0, p))
-		msg = rest.substr(p + 1)
+	msg = _clean(msg)
 	results.append([false, msg])
 	Sfx.play("fail", -4.0)
-	if go_next:
-		match lesson:
-			1:
-				_next_inst("line_z", 25.0)
-			4:
-				_next_inst("mark_z", 14.0)
-			5:
-				_next_inst("z0", 20.0)
-	if not guided:
-		hud.toast("✗ " + msg + ("  ·  " + Game.t("ls_redo_next") if go_next else ""), Color(1.0, 0.5, 0.35), 4.0)
-		idx = target
-		st = {"grace": true}
-		if idx >= steps.size():
-			_finish()
-			return
-		var s: Dictionary = steps[idx]
-		if s.has("enter"):
-			(s["enter"] as Callable).call()
-		return
-	_note = "✗ " + msg + ("\n" + Game.t("ls_redo_next") if go_next else "")
-	_note_good = false
-	_go(target, target <= idx)
+	var s: Dictionary = steps[idx]
+	if guided and not compact:
+		_set_compact(true)
+	_pause(true, true)
+	var body := "✗ " + msg + "\n\n" + Game.t("ls_how") + " " + Game.t(s["k"])
+	_fail_dlg = UiTheme.dialog(hud, Game.t("ls_wrong"), body, [
+		[Game.t("ls_redo_btn"), func():
+			_fail_dlg = null
+			_restore(_snap)
+			if guided:
+				_note = "✗ " + msg
+				_note_good = false
+				_go(idx, true)
+			else:
+				_pause(false, true)
+				st = {"grace": true}
+				if s.has("enter"):
+					(s["enter"] as Callable).call()],
+		[Game.t("ls_continue_btn"), func():
+			_fail_dlg = null
+			_pause(false, true)
+			_note = ""
+			_go(idx + 1)],
+	], Color(1.0, 0.5, 0.35))
 
 
 func _pass(s: Dictionary) -> void:
@@ -810,6 +842,8 @@ func _process(delta: float) -> void:
 	if idx < 0 or idx >= steps.size():
 		return
 	if guided and not compact:
+		return
+	if _fail_dlg != null:
 		return
 	var s: Dictionary = steps[idx]
 	if s.get("tap", false):

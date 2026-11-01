@@ -139,6 +139,14 @@ func _ready() -> void:
 
 
 ## Bàn đạp ga điện tử: nhẹ ở đầu hành trình, mạnh dần về cuối (giống xe thật)
+const GAS_KMH := 100.0      # số tự động: ga 100% ≈ 100 km/h (mỗi mức ga ứng với một tốc độ)
+const GAS_REV_KMH := 15.0
+
+
+func gas_target_ms() -> float:
+	return throttle * GAS_KMH / 3.6
+
+
 static func _pedal(t: float) -> float:
 	return pow(clampf(t, 0.0, 1.0), 1.1)
 
@@ -370,6 +378,12 @@ func _physics_process(delta: float) -> void:
 				var r_w := wrpm * 3.4 * FINAL
 				rpm = move_toward(rpm, maxf(IDLE + throttle * 1500.0, r_w), delta * 6000.0)
 				force = -(throttle * power * 0.75)
+				if throttle >= 0.05:
+					# lùi: mức ga = tốc độ lùi mong muốn (tối đa ~15 km/h)
+					var tgt_r := throttle * GAS_REV_KMH / 3.6
+					var hold_r := mass * 9.8 * 0.012
+					var kr := clampf((tgt_r + speed_ms) / 1.0, 0.0, 1.0)
+					force = -(hold_r + (maxf(throttle, 0.2) * power * 0.75 - hold_r) * kr) if -speed_ms < tgt_r else 0.0
 				if throttle < 0.05 and brake_input < 0.08 and speed_ms > -1.8:
 					force = -power * 0.11
 				if speed_ms < -6.0:
@@ -387,7 +401,17 @@ func _physics_process(delta: float) -> void:
 				ratio = RATIOS[auto_gear - 1]
 				r_w = wrpm * ratio * FINAL
 				rpm = move_toward(rpm, maxf(IDLE + throttle * 900.0, r_w), delta * 6000.0)
-				force = minf(_pedal(throttle) * power * pow(ratio / RATIOS[0], 0.6), _pedal(throttle) * power * 15.0 / maxf(speed_ms, 3.0))
+				# Mức ga = tốc độ mong muốn (vd 30% ≈ 30 km/h): ga càng cao xe lên càng nhanh,
+				# tới gần tốc độ đó thì lực kéo chỉ còn đủ bù lực cản -> xe giữ đều. Lên dốc vẫn chậm lại.
+				var pd := _pedal(maxf(throttle, 0.2))
+				force = minf(pd * power * pow(ratio / RATIOS[0], 0.6), pd * power * 15.0 / maxf(speed_ms, 3.0))
+				if throttle >= 0.05:
+					var tgt := gas_target_ms()
+					var hold := mass * 9.8 * 0.012 + 0.42 * speed_ms * speed_ms
+					var k := clampf((tgt - speed_ms) / 1.5, 0.0, 1.0)
+					force = hold + (force - hold) * k if speed_ms < tgt else 0.0
+				else:
+					force = 0.0
 				if throttle < 0.05 and brake_input < 0.08 and speed_ms < 1.8:
 					force = power * 0.11
 				if speed_ms > top_ms:
@@ -405,7 +429,8 @@ func _physics_process(delta: float) -> void:
 	# Lực cản khi chạy trớn: ma sát lăn + gió + phanh động cơ (số tự động, nhả ga)
 	if absf(speed_ms) > 0.3:
 		var resist := mass * 9.8 * 0.012 + 0.42 * speed_ms * speed_ms
-		if not manual and engine_on and (auto_mode == "D" or auto_mode == "R") and throttle < 0.05 and speed_kmh > 8.0:
+		var over := not manual and auto_mode == "D" and throttle >= 0.05 and speed_ms > gas_target_ms() + 0.4
+		if not manual and engine_on and (auto_mode == "D" or auto_mode == "R") and (throttle < 0.05 or over) and speed_kmh > 8.0:
 			resist += mass * (0.18 + 0.06 * float(6 - auto_gear))
 		apply_central_force(-fwd * signf(speed_ms) * resist)
 	if handbrake:
