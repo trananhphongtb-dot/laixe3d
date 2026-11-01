@@ -283,10 +283,18 @@ func _physics_process(delta: float) -> void:
 			engine_started.emit()
 
 	# Lái
-	var max_steer := lerpf(0.62, 0.1, clampf(speed_kmh / 110.0, 0.0, 1.0))
-	steering = move_toward(steering, steer_input * max_steer, delta * 2.2)
+	# Góc lái tối đa giảm theo tốc độ để gia tốc ngang không quá ~0.6G (xe chạy nhanh không bị lật/xoay vòng)
+	var wheelbase: float = float(dims["wheel_front_z"]) - float(dims["wheel_rear_z"])
+	var v2 := maxf(speed_ms * speed_ms, 1.0)
+	var max_steer := minf(0.6, atan(wheelbase * 6.0 / v2))
+	# Đường cong: tay lái nhẹ ở giữa, mạnh dần khi đánh nhiều
+	var sens: float = Game.settings.get("steer_sens", 1.0)
+	var si := clampf(steer_input * sens, -1.0, 1.0)
+	var curved := signf(si) * pow(absf(si), 1.5)
+	var rate := lerpf(1.8, 0.7, clampf(speed_kmh / 80.0, 0.0, 1.0))
+	steering = move_toward(steering, curved * max_steer, delta * rate)
 	if steer_mesh:
-		steer_mesh.rotation.z = -steer_input * deg_to_rad(270.0)
+		steer_mesh.rotation.z = -steer_input * deg_to_rad(360.0)
 
 	var force := 0.0
 	var power: float = spec["power"]

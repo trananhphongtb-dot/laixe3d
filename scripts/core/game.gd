@@ -12,6 +12,7 @@ var lang: String = "vi"
 var settings: Dictionary = {
 	"control": "wheel",        # wheel / tilt / buttons
 	"tilt_invert": false,
+	"steer_sens": 1.0,
 	"transmission": "auto",    # auto / manual
 	"graphics": 1,             # 0 thấp, 1 trung bình, 2 cao
 	"engine_vol": 0.8,

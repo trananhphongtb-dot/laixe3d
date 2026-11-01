@@ -437,14 +437,14 @@ func _process(delta: float) -> void:
 			target += 1.0
 		if btn_right.held:
 			target -= 1.0
-		s = move_toward(car.steer_input, target, delta * (2.2 if target != 0.0 else 3.5))
+		s = move_toward(car.steer_input, target, delta * (1.4 if target != 0.0 else 3.0))
 	elif ctrl == "tilt":
 		var acc := Input.get_accelerometer()
-		var v := -acc.x / 6.5
+		var v := -acc.x / 7.5
 		if Game.settings.get("tilt_invert", false):
 			v = -v
 		s = clampf(v, -1.0, 1.0)
-		if absf(s) < 0.04:
+		if absf(s) < 0.06:
 			s = 0.0
 	var kb_s := 0.0
 	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):

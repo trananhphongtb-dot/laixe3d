@@ -495,6 +495,15 @@ func _page_settings() -> void:
 	content.add_child(UiTheme.label(Game.t("set_control"), 22))
 	content.add_child(_toggle_row([["wheel", Game.t("ctl_wheel")], ["tilt", Game.t("ctl_tilt")], ["buttons", Game.t("ctl_buttons")]],
 		s["control"], func(v): Game.set_setting("control", v)))
+	content.add_child(UiTheme.label(Game.t("set_steer_sens"), 22))
+	var ss := HSlider.new()
+	ss.min_value = 0.5
+	ss.max_value = 1.5
+	ss.step = 0.05
+	ss.value = float(s.get("steer_sens", 1.0))
+	ss.custom_minimum_size = Vector2(0, 44)
+	ss.value_changed.connect(func(v): Game.set_setting("steer_sens", v))
+	content.add_child(ss)
 	var inv := CheckButton.new()
 	inv.text = Game.t("tilt_invert")
 	inv.button_pressed = s["tilt_invert"]
