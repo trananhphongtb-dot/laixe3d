@@ -31,6 +31,13 @@ var _targets: Array = []
 var _target_idx: int = 0
 var _hold: float = 0.0
 var _rng := RandomNumberGenerator.new()
+# lái tự do: lưu trạng thái xe vài giây gần nhất để "lái lại đoạn này"
+var _hist: Array = []
+var _hist_t: float = 0.0
+var _holding: bool = false
+var _hold_xf: Transform3D
+var _popup: Control
+const REWIND_S := 5.0
 
 
 func setup(p_city: City, p_car: PlayerCar, p_hud: Hud, p_mission: int) -> void:
@@ -39,6 +46,7 @@ func setup(p_city: City, p_car: PlayerCar, p_hud: Hud, p_mission: int) -> void:
 	hud = p_hud
 	mission_id = p_mission
 	city.player = car
+	process_physics_priority = 100
 	car.crashed.connect(_on_crash)
 	_last_pos = car.global_position
 	if mission_id >= 0:
@@ -60,8 +68,74 @@ func _violate(key: String, cool: float = 6.0, money_pen: bool = true) -> void:
 		return
 	_cool[key] = now
 	violations += 1
-	hud.toast(Game.t("viol") + ": " + Game.t(key), Color(1.0, 0.45, 0.3), 3.0)
 	Sfx.play("fail", -4.0)
+	if mission_id < 0 and _popup == null and not _holding:
+		_violation_popup(key)
+	else:
+		hud.toast(Game.t("viol") + ": " + Game.t(key), Color(1.0, 0.45, 0.3), 3.0)
+
+
+func _snapshot() -> Dictionary:
+	return {"t": time, "xf": car.global_transform, "lv": car.linear_velocity, "av": car.angular_velocity,
+		"mode": car.auto_mode, "gear": car.gear, "blink": car.blinker, "lights": car.lights_on, "hb": car.handbrake,
+		"belt": car.seatbelt, "gas": hud.gas.value, "gas_l": hud.gas.locked, "brake": hud.brake_p.value, "brake_l": hud.brake_p.locked}
+
+
+func _violation_popup(key: String) -> void:
+	_holding = true
+	_hold_xf = car.global_transform
+	var keep_v := [car.linear_velocity, car.angular_velocity]
+	hud.set_controls_enabled(false, true)
+	car.set_horn(false)
+	var buttons: Array = []
+	if key != "v_belt" and _hist.size() > 0:
+		buttons.append([Game.t("rw_replay"), func():
+			_popup = null
+			_rewind(key)])
+	buttons.append([Game.t("rw_continue"), func():
+		_popup = null
+		_holding = false
+		car.linear_velocity = keep_v[0]
+		car.angular_velocity = keep_v[1]
+		hud.set_controls_enabled(true, true)])
+	_popup = UiTheme.dialog(hud, Game.t("viol") + ": " + Game.t(key), Game.t(key + "_why"), buttons, Color(1.0, 0.45, 0.3))
+
+
+func _rewind(key: String) -> void:
+	var snap: Dictionary = _hist[0]
+	for h in _hist:
+		var d: Dictionary = h
+		if float(d["t"]) <= time - REWIND_S:
+			snap = d
+	_holding = false
+	car.global_transform = snap["xf"]
+	car.linear_velocity = snap["lv"]
+	car.angular_velocity = snap["av"]
+	car.auto_mode = snap["mode"]
+	car.gear = snap["gear"]
+	car.blinker = snap["blink"]
+	car.set_lights(snap["lights"])
+	car.handbrake = snap["hb"]
+	car.seatbelt = snap["belt"]
+	hud.set_controls_enabled(true, true)
+	hud.gas.set_value(snap["gas"])
+	hud.gas.locked = snap["gas_l"]
+	hud.brake_p.set_value(snap["brake"])
+	hud.brake_p.locked = snap["brake_l"]
+	violations = maxi(0, violations - 1)
+	_cool.erase(key)
+	# bỏ lịch sử sau điểm quay lại, reset trạng thái nhận diện ngã tư / làn
+	var keep: Array = []
+	for h in _hist:
+		if float(h["t"]) <= float(snap["t"]):
+			keep.append(h)
+	_hist = keep
+	_prev_s = 1e9
+	_in_x = false
+	_wrong_t = 0.0
+	_last_pos = car.global_position
+	hud.toast(Game.t("rw_done"), UiTheme.ACCENT, 2.5)
+	Sfx.play("ui", -4.0)
 
 
 func _on_crash(_impact: float) -> void:
@@ -71,7 +145,19 @@ func _on_crash(_impact: float) -> void:
 func _physics_process(delta: float) -> void:
 	if car == null or _done:
 		return
+	if _holding:
+		car.global_transform = _hold_xf
+		car.linear_velocity = Vector3.ZERO
+		car.angular_velocity = Vector3.ZERO
+		return
 	time += delta
+	if mission_id < 0:
+		_hist_t -= delta
+		if _hist_t <= 0.0:
+			_hist_t = 0.1
+			_hist.append(_snapshot())
+			while _hist.size() > 0 and time - float(_hist[0]["t"]) > REWIND_S + 3.0:
+				_hist.pop_front()
 	var p := car.global_position
 	var h := car.forward()
 	h.y = 0

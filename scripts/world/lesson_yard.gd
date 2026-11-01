@@ -45,7 +45,16 @@ func _ready() -> void:
 	batch.commit(self)
 	var c := Vector3(area.get_center().x, 0, area.get_center().y)
 	EnvBuilder.ground(self, area.size + Vector2(60, 60), c, Color(0.3, 0.44, 0.22))
-	Scenery.surround(self, c, area.grow(30), maxf(area.size.x, area.size.y) * 0.5 + 220.0, false, false, 40 + lesson)
+	var inner := area.grow(-14.0)
+	var excl: Array = []
+	if lesson == 2:
+		# lưới đường: chỉ chừa dải đường, giữa các ô vẫn có ruộng/cảnh
+		var size := (GN - 1) * GB
+		inner = Rect2(-2, -2, 4, 4)
+		for k in GN:
+			excl.append(Rect2(-30, k * GB - 9, size + 60, 18))
+			excl.append(Rect2(k * GB - 9, -30, 18, size + 60))
+	Scenery.surround(self, c, inner, maxf(area.size.x, area.size.y) * 0.5 + 220.0, false, false, 40 + lesson, excl)
 
 
 func _yaw_xf(pos: Vector3, yaw: float) -> Transform3D:
@@ -139,53 +148,43 @@ func _build_stop() -> Rect2:
 	return Rect2(-30, -50, 60, z_end + 80)
 
 
-# ------------------------------------------------------------------ 2. rẽ: đường bậc thang, ngã tư rẽ phải/trái xen kẽ
+# ------------------------------------------------------------------ 2. rẽ: lưới ngã tư thông nhau, đi sai vẫn gặp ngã tư khác
+const GN := 5
+const GB := 90.0
+
+
+func grid_node(i: int, j: int) -> Vector3:
+	return Vector3(i * GB, 0, j * GB)
+
+
 func _build_turn() -> Rect2:
-	var d := Vector3(0, 0, 1)
-	var p := Vector3(0, 0, -20)
-	var minx := 0.0
-	var maxx := 0.0
-	var minz := -20.0
-	var maxz := 0.0
-	var seg := 95.0
-	var turn := -1.0     # -1 rẽ phải, +1 rẽ trái
-	_turnaround(p - d * 6.0)
-	for k in 10:
-		var c := p + d * seg
-		var dout := d.rotated(Vector3.UP, PI * 0.5 * turn)
-		# đoạn đường tới ngã tư (dừng trước mép ngã tư)
-		_road(p + d * (HW + 1.0 if k > 0 else 0.0), c - d * (HW + 1.0))
-		# mặt ngã tư + 2 nhánh cụt hai bên để giống ngã tư thật
-		batch.box("asph", c + Vector3(0, -0.006, 0), Vector3(HW * 2 + 2, 0.03, HW * 2 + 2))
-		var side := d.rotated(Vector3.UP, PI * 0.5)
-		var stub := -dout if absf(dout.dot(side)) > 0.5 else side
-		_road(c + stub * (HW + 1.0), c + stub * 22.0)
-		_road(c + d * (HW + 1.0), c + d * 18.0)
-		# vạch dừng làn phải
-		var r := d.rotated(Vector3.UP, -PI * 0.5)
-		var stop_c := c - d * (HW + 2.0)
-		batch.strip("line", stop_c, stop_c + r * HW, 0.4, 0.014, 0.02)
-		# mũi tên chỉ hướng rẽ trên làn
-		_arrow(c - d * 30.0 + r * 1.75, d)
-		var rad := 1.75 + HW if turn > 0 else HW - 1.75
-		_curve_arrow(c - d * (HW + 1.0) + r * 1.75, d, turn, rad if turn > 0 else 2.5)
-		instances.append({"c": c, "d_in": d, "d_out": dout, "turn": turn})
-		for q in [c + stub * 22.0, c + d * 18.0]:
-			minx = minf(minx, q.x)
-			maxx = maxf(maxx, q.x)
-			minz = minf(minz, q.z)
-			maxz = maxf(maxz, q.z)
-		p = c
-		d = dout
-		turn = -turn
-	_road(p + d * (HW + 1.0), p + d * 60.0)
-	_turnaround(p + d * 66.0)
-	var e := p + d * 66.0
-	minx = minf(minx, e.x)
-	maxx = maxf(maxx, e.x)
-	maxz = maxf(maxz, e.z)
-	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
-	return Rect2(minx - 30, minz - 30, maxx - minx + 60, maxz - minz + 60)
+	MeshBatch.mat("tl_pole", Color(0.25, 0.27, 0.3), 0.6, 0.0, 0.4)
+	var dirs := [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]
+	for i in GN:
+		for j in GN:
+			var c := grid_node(i, j)
+			batch.box("asph", c + Vector3(0, -0.006, 0), Vector3(HW * 2 + 2, 0.03, HW * 2 + 2))
+			for d: Vector3 in dirs:
+				var ni := i + int(d.x)
+				var nj := j + int(d.z)
+				var inside := ni >= 0 and nj >= 0 and ni < GN and nj < GN
+				if inside and (d.x > 0 or d.z > 0):
+					_road(c + d * (HW + 1.0), grid_node(ni, nj) - d * (HW + 1.0))
+				elif not inside:
+					# đường ra rìa + bãi quay đầu (luôn quay lại được)
+					_road(c + d * (HW + 1.0), c + d * 28.0)
+					_turnaround(c + d * 34.0)
+				# vạch dừng trên làn đi vào ngã tư từ hướng d
+				var r := d.rotated(Vector3.UP, -PI * 0.5)
+				var stop_c := c + d * (HW + 2.0)
+				batch.strip("line", stop_c, stop_c - r * HW, 0.4, 0.014, 0.02)
+				for k in 6:
+					var zp := c + d * (HW + 0.9) + r * (-HW + 0.6 + k * 1.3)
+					batch.strip("line", zp - d * 0.0, zp + d * 0.0 + d * 1.6, 0.5, 0.013, 0.02)
+			instances.append({"c": c, "i": i, "j": j})
+	spawn_xf = _yaw_xf(Vector3(2 * GB + LANE_X, 0, 22), 0.0)
+	var size := (GN - 1) * GB
+	return Rect2(-50, -50, size + 100, size + 100)
 
 
 # ------------------------------------------------------------------ 3. quay đầu 3 điểm: đường hẹp có lề dài

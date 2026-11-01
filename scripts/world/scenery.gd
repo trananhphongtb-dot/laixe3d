@@ -4,6 +4,13 @@ extends RefCounted
 
 static var _tex: Dictionary = {}
 static var cur_rain: bool = false
+static var theme: String = "country"     # country · tea · coast · lake
+const THEMES := ["country", "tea", "coast", "lake"]
+
+
+static func pick_theme(want: String) -> String:
+	theme = want if THEMES.has(want) else THEMES[randi() % THEMES.size()]
+	return theme
 
 
 static func gfx() -> int:
@@ -66,6 +73,10 @@ static func mountains(parent: Node3D, center: Vector3, r0: float, night: bool = 
 		var r: float = L[0]
 		var hmax: float = L[1]
 		var col: Color = L[2]
+		if theme == "tea" and li == 0:
+			col = Color(0.2, 0.38, 0.24)
+		elif theme == "coast":
+			col = col.lerp(Color(0.45, 0.6, 0.7), 0.3)
 		if night:
 			col = col.darkened(0.75)
 		var seg := 140
@@ -79,6 +90,11 @@ static func mountains(parent: Node3D, center: Vector3, r0: float, night: bool = 
 			var dir := Vector3(cos(a), 0, sin(a))
 			var h := (n.get_noise_2d(cos(a) * 3.0 + li * 7.0, sin(a) * 3.0) * 0.5 + 0.5)
 			h = pow(h, 1.6) * hmax + hmax * 0.12
+			if theme == "coast" and dir.x < -0.2:
+				# phía biển: chỉ còn đảo nhỏ thấp ngoài khơi
+				h *= clampf(0.6 + dir.x * 1.2, 0.04, 1.0) if li == 0 else 0.03
+			elif theme == "tea" and li == 0:
+				h *= 1.25
 			var top := center + dir * r + Vector3(0, h, 0)
 			var bot := center + dir * (r - 30.0) + Vector3(0, -2.0, 0)
 			if k > 0:
@@ -400,11 +416,23 @@ static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: flo
 	var area := Rect2(center.x - outer_r, center.z - outer_r, outer_r * 2.0, outer_r * 2.0)
 	var excl := [inner]
 	excl.append_array(extra_exclude)
-	rice_fields(b, area, excl, rseed)
-	# ruộng xa: mảng lớn phủ kín tới chân núi
 	var far := outer_r * 2.4
+	var far_col := Color(0.31, 0.47, 0.21)
+	match theme:
+		"tea":
+			tea_hills(b, area, excl, rseed)
+			far_col = Color(0.24, 0.42, 0.2)
+		"coast":
+			coast(b, area, excl, inner, far, rseed)
+			far_col = Color(0.4, 0.5, 0.26)
+		"lake":
+			lake_park(b, area, excl, inner, rseed)
+			far_col = Color(0.33, 0.52, 0.24)
+		_:
+			rice_fields(b, area, excl, rseed)
+	# nền xa: mảng lớn phủ kín tới chân núi
 	MeshBatch._mats.erase("far_field")
-	MeshBatch.mat("far_field", Color(0.31, 0.47, 0.21) if not night else Color(0.1, 0.16, 0.08), 1.0)
+	MeshBatch.mat("far_field", far_col if not night else Color(0.1, 0.16, 0.08), 1.0)
 	texturize("far_field", 0.08, 0.35, 0.05)
 	b.box("far_field", center + Vector3(0, -0.06, 0), Vector3(far * 2.0, 0.05, far * 2.0))
 	b.commit(parent)
@@ -416,3 +444,190 @@ static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: flo
 	parent.add_child(gb)
 	mountains(parent, center, maxf(outer_r * 2.2, 420.0), night)
 	clouds(parent, center, outer_r * 2.0, night, rain)
+
+
+# ------------------------------------------------------------------ các bối cảnh khác
+
+static func _theme_mats() -> void:
+	_mats()
+	MeshBatch.mat("tea", Color(0.2, 0.46, 0.17), 0.95)
+	MeshBatch.mat("tea2", Color(0.27, 0.53, 0.2), 0.95)
+	MeshBatch.mat("tea_soil", Color(0.45, 0.33, 0.22), 1.0)
+	MeshBatch.mat("pine", Color(0.12, 0.3, 0.17), 0.9)
+	MeshBatch.mat("sand", Color(0.86, 0.79, 0.6), 1.0)
+	MeshBatch.mat("sea", Color(0.13, 0.4, 0.55), 0.06, 0.0, 0.3)
+	MeshBatch.mat("sea_foam", Color(0.85, 0.92, 0.95), 0.6)
+	MeshBatch.mat("palm_trunk", Color(0.5, 0.4, 0.28), 0.9)
+	MeshBatch.mat("palm_leaf", Color(0.25, 0.52, 0.2), 0.9)
+	MeshBatch.mat("lawn", Color(0.36, 0.58, 0.25), 1.0)
+	MeshBatch.mat("lake", Color(0.14, 0.33, 0.4), 0.06, 0.0, 0.3)
+	MeshBatch.mat("willow", Color(0.38, 0.6, 0.25), 0.9)
+	MeshBatch.mat("flower0", Color(0.9, 0.3, 0.45), 0.9)
+	MeshBatch.mat("flower1", Color(0.98, 0.8, 0.2), 0.9)
+	MeshBatch.mat("flower2", Color(0.85, 0.85, 0.95), 0.9)
+	MeshBatch.mat("boat", Color(0.55, 0.3, 0.15), 0.8)
+	texturize("sand", 0.3, 0.25, 0.2)
+	texturize("tea_soil", 0.4, 0.3, 0.2)
+	texturize("lawn", 0.25, 0.3, 0.12)
+
+
+static func pine(b: MeshBatch, p: Vector3, s: float = 1.0) -> void:
+	b.cyl("trunk", p + Vector3(0, 1.5 * s, 0), 0.18 * s, 3.0 * s)
+	for k in 4:
+		var w := (3.4 - k * 0.75) * s
+		b.sphere("pine", p + Vector3(0, (2.4 + k * 1.5) * s, 0), Vector3(w, 2.2 * s, w))
+
+
+static func palm(b: MeshBatch, p: Vector3, rng: RandomNumberGenerator) -> void:
+	var lean := Vector3(rng.randf_range(-0.6, 0.6), 0, rng.randf_range(-0.6, 0.6))
+	var h := rng.randf_range(6.0, 9.0)
+	var segs := 5
+	var top := p
+	for k in segs:
+		var t0 := float(k) / segs
+		var t1 := float(k + 1) / segs
+		var a := p + Vector3(0, h * t0, 0) + lean * t0 * t0 * h * 0.3
+		var c := p + Vector3(0, h * t1, 0) + lean * t1 * t1 * h * 0.3
+		var dirv := (c - a)
+		var bs := Basis(Vector3.UP.cross(dirv.normalized()).normalized(), Vector3.UP.angle_to(dirv.normalized())) if dirv.normalized().cross(Vector3.UP).length() > 0.01 else Basis()
+		b.box_basis("palm_trunk", bs, (a + c) * 0.5, Vector3(0.32, dirv.length() + 0.05, 0.32))
+		top = c
+	for k in 8:
+		var yaw := TAU * k / 8.0 + rng.randf() * 0.3
+		var fb := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, 0.45)
+		b.box_basis("palm_leaf", fb, top + Basis(Vector3.UP, yaw) * Vector3(0, -0.2, 1.4), Vector3(0.7, 0.05, 3.2))
+	b.sphere("palm_trunk", top + Vector3(0, -0.3, 0), Vector3(0.7, 0.6, 0.7))
+
+
+static func willow(b: MeshBatch, p: Vector3, s: float = 1.0) -> void:
+	b.cyl("trunk", p + Vector3(0, 1.4 * s, 0), 0.22 * s, 2.8 * s)
+	b.sphere("willow", p + Vector3(0, 3.6 * s, 0), Vector3(4.2, 2.6, 4.2) * s)
+	b.sphere("willow", p + Vector3(0, 2.4 * s, 0), Vector3(4.6, 2.8, 4.6) * s)
+
+
+## Đồi chè: luống chè chạy theo hàng trên các ô, xen hàng thông
+static func tea_hills(b: MeshBatch, area: Rect2, exclude: Array, rseed: int) -> void:
+	_theme_mats()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = rseed
+	var cell := 30.0 if gfx() > 0 else 40.0
+	var x := area.position.x
+	while x < area.end.x:
+		var z := area.position.y
+		while z < area.end.y:
+			var c := Vector2(x + cell * 0.5, z + cell * 0.5)
+			if not _in_any(c, exclude, cell * 0.6):
+				var r := rng.randf()
+				if r < 0.16:
+					# rừng thông nhỏ
+					for k in 4:
+						pine(b, Vector3(c.x + rng.randf_range(-12, 12), 0, c.y + rng.randf_range(-12, 12)), rng.randf_range(1.0, 1.6))
+				else:
+					b.box("tea_soil", Vector3(c.x, 0.02, c.y), Vector3(cell - 0.5, 0.04, cell - 0.5))
+					var along_x := rng.randf() < 0.5
+					var rows := int(cell / 1.8)
+					var key := "tea" if rng.randf() < 0.6 else "tea2"
+					for k in rows:
+						var o := -cell * 0.5 + 0.9 + k * 1.8
+						if along_x:
+							b.box(key, Vector3(c.x, 0.4, c.y + o), Vector3(cell - 2.0, 0.8, 1.1))
+						else:
+							b.box(key, Vector3(c.x + o, 0.4, c.y), Vector3(1.1, 0.8, cell - 2.0))
+					if r < 0.24:
+						pine(b, Vector3(x + 1, 0, z + 1), rng.randf_range(1.1, 1.5))
+			z += cell
+		x += cell
+
+
+## Bờ biển: cát, hàng dừa, mặt biển phía tây; phía đất liền là ruộng màu
+static func coast(b: MeshBatch, area: Rect2, exclude: Array, inner: Rect2, far: float, rseed: int) -> void:
+	_theme_mats()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = rseed
+	var shore := inner.position.x - 70.0
+	var c := area.get_center()
+	# biển
+	b.box("sea", Vector3(shore - far * 0.5 - 30.0, 0.01, c.y), Vector3(far, 0.04, far * 3.0))
+	# bãi cát + bọt sóng
+	b.box("sand", Vector3(shore - 15.0, 0.02, c.y), Vector3(60.0, 0.04, area.size.y + far))
+	var z := c.y - area.size.y * 0.5 - far * 0.5
+	while z < c.y + area.size.y * 0.5 + far * 0.5:
+		b.box("sea_foam", Vector3(shore - 45.0 + sin(z * 0.05) * 2.0, 0.035, z), Vector3(1.2, 0.02, 9.0))
+		z += 9.5
+	# hàng dừa dọc bờ
+	z = area.position.y
+	while z < area.end.y:
+		if not _in_any(Vector2(shore + 5.0, z), exclude, 6.0):
+			palm(b, Vector3(shore + rng.randf_range(-12.0, 12.0), 0, z), rng)
+		z += rng.randf_range(7.0, 13.0)
+	# thuyền thúng, thuyền gỗ
+	for k in 8:
+		var bp := Vector3(shore - rng.randf_range(60, 300), 0.15, c.y + rng.randf_range(-400, 400))
+		b.box("boat", bp, Vector3(2.2, 0.6, 7.0), rng.randf() * TAU)
+	# đất liền: ruộng + dừa rải rác
+	var land := Rect2(shore + 15.0, area.position.y, area.end.x - shore - 15.0, area.size.y)
+	rice_fields(b, land, exclude, rseed)
+	for k in 40:
+		var p := Vector2(rng.randf_range(land.position.x, land.end.x), rng.randf_range(land.position.y, land.end.y))
+		if not _in_any(p, exclude, 8.0):
+			palm(b, Vector3(p.x, 0, p.y), rng)
+
+
+## Công viên hồ: bãi cỏ, hồ lớn, liễu rủ, bồn hoa, ghế đá
+static func lake_park(b: MeshBatch, area: Rect2, exclude: Array, inner: Rect2, rseed: int) -> void:
+	_theme_mats()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = rseed
+	# vài hồ quanh khu, tránh vùng loại trừ
+	var lakes: Array = []
+	for k in 400:
+		if lakes.size() >= 14:
+			break
+		var r := rng.randf_range(25.0, 60.0)
+		var p := Vector2(rng.randf_range(area.position.x + r, area.end.x - r), rng.randf_range(area.position.y + r, area.end.y - r))
+		if k % 2 == 0:
+			# ưu tiên hồ sát khu đường để nhìn thấy từ xe
+			var sx := 1.0 if rng.randf() < 0.5 else -1.0
+			p.x = (inner.get_center().x + sx * (inner.size.x * 0.5 + r + rng.randf_range(14.0, 40.0)))
+		if _in_any(p, exclude, r + 10.0):
+			continue
+		var ok := true
+		for l in lakes:
+			if p.distance_to(l[0]) < r + float(l[1]) + 20.0:
+				ok = false
+		if not ok:
+			continue
+		lakes.append([p, r])
+		b.cyl("bank", Vector3(p.x, 0.05, p.y), r + 2.0, 0.06)
+		b.cyl("lake", Vector3(p.x, 0.07, p.y), r, 0.06)
+		b.cyl("lake", Vector3(p.x + r * 0.4, 0.07, p.y - r * 0.3), r * 0.7, 0.06)
+		var n := int(r * 0.35)
+		for j in n:
+			var a := TAU * j / n
+			var tp := Vector2(p.x, p.y) + Vector2(cos(a), sin(a)) * (r + 5.0)
+			if not _in_any(tp, exclude, 4.0):
+				willow(b, Vector3(tp.x, 0, tp.y), rng.randf_range(0.9, 1.3))
+	# cây, bồn hoa, ghế rải khắp bãi cỏ
+	var cell := 22.0
+	var x := area.position.x
+	while x < area.end.x:
+		var z := area.position.y
+		while z < area.end.y:
+			var cc := Vector2(x + cell * 0.5, z + cell * 0.5)
+			if not _in_any(cc, exclude, cell * 0.6):
+				b.box("lawn", Vector3(cc.x, 0.02, cc.y), Vector3(cell + 0.05, 0.04, cell + 0.05))
+			var c := Vector2(x + rng.randf_range(4, cell - 4), z + rng.randf_range(4, cell - 4))
+			var in_lake := false
+			for l in lakes:
+				if c.distance_to(l[0]) < float(l[1]) * 1.6 + 6.0:
+					in_lake = true
+			if not in_lake and not _in_any(c, exclude, 6.0):
+				var r := rng.randf()
+				if r < 0.35:
+					tree(b, Vector3(c.x, 0, c.y), rng.randf_range(0.9, 1.4))
+				elif r < 0.5:
+					b.cyl("flower%d" % rng.randi_range(0, 2), Vector3(c.x, 0.15, c.y), rng.randf_range(1.2, 2.2), 0.3)
+				elif r < 0.56:
+					b.box("door", Vector3(c.x, 0.25, c.y), Vector3(1.8, 0.12, 0.5), rng.randf() * TAU)
+			z += cell
+		x += cell

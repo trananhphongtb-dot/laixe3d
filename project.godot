@@ -4,7 +4,11 @@ config_version=5
 
 [application]
 
-config/name="Lái Xe 3D"
+config/name="Learn to Drive 3D"
+config/name_localized={
+"en": "Learn to Drive 3D",
+"vi": "Tập Lái Xe 3D"
+}
 config/description="Lái ô tô góc nhìn thứ nhất, luyện thi sa hình B"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")

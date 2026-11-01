@@ -232,7 +232,7 @@ func _build() -> void:
 	_light_mats = TrafficLight.make_mats()
 	TrafficLight.set_state(_light_mats, "G")
 	TrafficLight.build(batch, self, o5 + _dir * 14.2 - l5 * 3.4, -_dir, _light_mats)
-	TrafficLight.build(batch, self, cross_c + _dir * 6.5 + l5 * 3.4, -_dir, _light_mats)
+	TrafficLight.build(batch, self, cross_c + _dir * 6.5 + l5 * 3.4, -_dir, _light_mats, 2.6)
 	_lesson(5, "light", i5, {"line_u": 14.0})
 	_straight(6.0)
 

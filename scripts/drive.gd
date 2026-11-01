@@ -33,6 +33,7 @@ func _ready() -> void:
 		rain = md["rain"]
 	env = EnvBuilder.build(self, night, rain)
 	Scenery.cur_rain = rain
+	Scenery.pick_theme(Game.free_theme if m == "free" else Game.force_theme)
 
 	car = PlayerCar.new()
 	car.setup(Game.car_spec(), Game.COLORS[Game.car_color % Game.COLORS.size()], Game.settings.get("transmission", "auto") == "manual")
@@ -181,8 +182,8 @@ func _pause() -> void:
 		[Game.t("resume"), func():
 			_pause_dlg = null
 			var keep := is_instance_valid(lesson_runner) and lesson_runner.guided and not lesson_runner.compact
-			get_tree().paused = keep
-			hud.set_controls_enabled(not keep)],
+			get_tree().paused = false
+			hud.set_controls_enabled(not keep, true)],
 		[Game.t("restart"), func():
 			_pause_dlg = null
 			Game.start_drive(Game.mode)],
@@ -294,7 +295,7 @@ func _on_lesson_finished() -> void:
 			Game.start_drive("lesson")])
 	else:
 		buttons.append([Game.t("ls_again"), func(): Game.start_drive("lesson")])
-	if Game.lesson_id < 4:
+	if Game.lesson_id < 5:
 		buttons.append([Game.t("next_lesson"), func():
 			Game.lesson_id += 1
 			Game.lesson_guided = true

@@ -284,7 +284,7 @@ func _build_ui() -> void:
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left.add_theme_constant_override("separation", 0)
 	ui.add_child(left)
-	title_label = UiTheme.label("LÁI XE 3D", 62, Color(1, 1, 1))
+	title_label = UiTheme.label(Game.t("app_title"), 58, Color(1, 1, 1))
 	title_label.add_theme_font_override("font", Icons.bold_font(1.1))
 	title_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	left.add_child(title_label)
@@ -354,6 +354,7 @@ func _update_stats() -> void:
 	chips.add_child(_chip("flag", "%s %d/%d" % [Game.t("chip_pass"), Game.exam_passes, Game.exam_tries], Color(0.45, 0.85, 1.0)))
 	var sub: Label = title_label.get_parent().get_node("Sub")
 	sub.text = Game.t("subtitle")
+	title_label.text = Game.t("app_title")
 
 
 func _clear() -> void:
@@ -484,8 +485,8 @@ func _page_exam() -> void:
 func _page_lessons() -> void:
 	_header(Game.t("menu_lessons"))
 	content.add_child(UiTheme.label(Game.t("lessons_desc"), 24, Color(0.8, 0.85, 0.95)))
-	var icons := ["flag", "road", "back", "car"]
-	for i in range(1, 5):
+	var icons := ["flag", "road", "back", "car", "flag"]
+	for i in range(1, 6):
 		var n := i
 		var done: bool = Game.lessons_learned.has(i)
 		var c := _card("check" if done else icons[i - 1], "%d. %s" % [i, Game.t("lesson_l%d" % i)], Game.t("lesson_l%d_sub" % i), func():
@@ -532,6 +533,18 @@ func _page_free() -> void:
 	content.add_child(_toggle_row([[false, Game.t("day")], [true, Game.t("night")]], Game.free_night, func(v): Game.free_night = v))
 	content.add_child(UiTheme.label(Game.t("weather"), 27))
 	content.add_child(_toggle_row([[false, Game.t("sunny")], [true, Game.t("rainy")]], Game.free_rain, func(v): Game.free_rain = v))
+	content.add_child(UiTheme.label(Game.t("theme"), 27))
+	var tg := _toggle_row([["random", Game.t("th_random")], ["country", Game.t("th_country")], ["tea", Game.t("th_tea")],
+		["coast", Game.t("th_coast")], ["lake", Game.t("th_lake")]], Game.free_theme, func(v): Game.free_theme = v)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	for ch in tg.get_children():
+		tg.remove_child(ch)
+		grid.add_child(ch)
+	tg.queue_free()
+	content.add_child(grid)
 	var go := UiTheme.button(Game.t("start"), func(): Game.start_drive("free"), 76)
 	go.add_theme_font_size_override("font_size", 30)
 	content.add_child(go)

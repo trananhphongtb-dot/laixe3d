@@ -43,6 +43,8 @@ var mode: String = "exam"          # exam / practice / free / mission
 var practice_lesson: int = 1
 var free_night: bool = false
 var free_rain: bool = false
+var free_theme: String = "random"
+var force_theme: String = "random"   # dùng cho kiểm thử
 var mission_id: int = 0
 
 const CARS := {
