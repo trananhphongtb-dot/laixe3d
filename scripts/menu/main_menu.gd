@@ -303,6 +303,8 @@ func _show_page(p: String) -> void:
 			_page_main()
 		"exam":
 			_page_exam()
+		"lessons":
+			_page_lessons()
 		"free":
 			_page_free()
 		"missions":
@@ -322,7 +324,8 @@ func _show_page(p: String) -> void:
 func _page_main() -> void:
 	var items := [
 		["flag", "menu_exam", "msub_exam", func(): _show_page("exam"), Color(0.98, 0.62, 0.12)],
-		["road", "menu_free", "msub_free", func(): _show_page("free"), Color(0.35, 0.8, 1.0)],
+		["steer", "menu_lessons", "msub_lessons", func(): _show_page("lessons"), Color(0.35, 0.8, 1.0)],
+		["road", "menu_free", "msub_free", func(): _show_page("free"), Color(0.55, 0.65, 1.0)],
 		["target", "menu_missions", "msub_missions", func(): _show_page("missions"), Color(0.45, 0.9, 0.45)],
 		["car", "menu_garage", "msub_garage", func(): _show_page("garage"), Color(0.95, 0.4, 0.45)],
 		["gear", "menu_settings", "msub_settings", func(): _show_page("settings"), Color(0.7, 0.72, 0.8)],
@@ -355,6 +358,19 @@ func _page_exam() -> void:
 		var c := _card("check" if done else "flag", "%d. %s" % [i, Game.t("lesson_%d" % i)], Game.t("passed") if done else "", func():
 			Game.practice_lesson = n
 			Game.start_drive("practice"), 64, Color(0.45, 0.9, 0.45) if done else Color(0.6, 0.65, 0.75))
+		content.add_child(c)
+
+
+func _page_lessons() -> void:
+	_header(Game.t("menu_lessons"))
+	content.add_child(UiTheme.label(Game.t("lessons_desc"), 20, Color(0.8, 0.85, 0.95)))
+	var icons := ["flag", "road", "back", "car"]
+	for i in range(1, 5):
+		var n := i
+		var done: bool = Game.lessons_learned.has(i)
+		var c := _card("check" if done else icons[i - 1], "%d. %s" % [i, Game.t("lesson_l%d" % i)], Game.t("lesson_l%d_sub" % i), func():
+			Game.lesson_id = n
+			Game.start_drive("lesson"), 82, Color(0.45, 0.9, 0.45) if done else Color(0.35, 0.8, 1.0))
 		content.add_child(c)
 
 

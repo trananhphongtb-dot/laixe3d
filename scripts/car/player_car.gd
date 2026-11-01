@@ -57,7 +57,7 @@ func setup(car_spec: Dictionary, color: Color, is_manual: bool) -> void:
 	dims = CarModel.dims(spec)
 	mass = spec["mass"]
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0, float(dims["base"]) + 0.1, 0)
+	center_of_mass = Vector3(0, float(dims["base"]) - 0.05, 0)
 	contact_monitor = true
 	max_contacts_reported = 4
 	can_sleep = false
@@ -94,8 +94,8 @@ func setup(car_spec: Dictionary, color: Color, is_manual: bool) -> void:
 			w.suspension_max_force = mass * 12.0
 			w.damping_compression = 2.4
 			w.damping_relaxation = 3.0
-			w.wheel_friction_slip = 3.2
-			w.wheel_roll_influence = 0.05
+			w.wheel_friction_slip = 2.5
+			w.wheel_roll_influence = 0.02
 			w.use_as_steering = front
 			w.use_as_traction = true
 			var vis := CarModel.make_wheel_mesh(wr, CarModel.LAYER_EXTERIOR)
@@ -139,7 +139,7 @@ func _ready() -> void:
 func set_wet(v: bool) -> void:
 	wet = v
 	for w in wheels:
-		w.wheel_friction_slip = 2.2 if v else 3.2
+		w.wheel_friction_slip = 1.8 if v else 2.5
 
 
 func eye_position() -> Vector3:
@@ -294,7 +294,7 @@ func _physics_process(delta: float) -> void:
 	var rate := lerpf(1.8, 0.7, clampf(speed_kmh / 80.0, 0.0, 1.0))
 	steering = move_toward(steering, curved * max_steer, delta * rate)
 	if steer_mesh:
-		steer_mesh.rotation.z = -steer_input * deg_to_rad(360.0)
+		steer_mesh.rotation.z = -steer_input * deg_to_rad(540.0)
 
 	var force := 0.0
 	var power: float = spec["power"]
@@ -395,6 +395,32 @@ func _physics_process(delta: float) -> void:
 	tm.emission_energy_multiplier = 2.5 if brake_input > 0.05 else (1.0 if lights_on else 0.3)
 
 	_last_vel = linear_velocity
+	_anti_roll(delta)
+
+
+## Chống lật: hãm tốc độ lắc ngang, kéo thân xe về thẳng; nếu vẫn lật thì tự dựng lại sau 2 giây.
+var _flip_t: float = 0.0
+signal flipped_reset
+
+
+func _anti_roll(delta: float) -> void:
+	var up := global_transform.basis.y
+	var fwd := global_transform.basis.z
+	# mô-men kéo xe về thẳng đứng khi nghiêng nhiều
+	var tilt := up.cross(Vector3.UP)
+	if up.y < 0.97:
+		apply_torque(tilt * mass * 25.0)
+	if up.y < 0.35:
+		_flip_t += delta
+		if _flip_t > 2.0:
+			_flip_t = 0.0
+			var yaw := atan2(fwd.x, fwd.z)
+			global_transform = Transform3D(Basis(Vector3.UP, yaw), global_position + Vector3(0, 0.8, 0))
+			linear_velocity = Vector3.ZERO
+			angular_velocity = Vector3.ZERO
+			flipped_reset.emit()
+	else:
+		_flip_t = 0.0
 
 
 func _process(delta: float) -> void:

@@ -7,6 +7,7 @@ var cam_cabin: Camera3D
 var cam_chase: Camera3D
 var cabin_view: bool = true
 var course: ExamCourse
+var yard: LessonYard
 var city: City
 var city_mode: CityMode
 var env: Dictionary
@@ -35,7 +36,11 @@ func _ready() -> void:
 	car.setup(Game.car_spec(), Game.COLORS[Game.car_color % Game.COLORS.size()], Game.settings.get("transmission", "auto") == "manual")
 	car.set_wet(rain)
 
-	if m == "exam" or m == "practice" or m == "tutorial":
+	if m == "lesson":
+		yard = LessonYard.new(Game.lesson_id)
+		add_child(yard)
+		add_child(car)
+	elif m == "exam" or m == "practice" or m == "tutorial":
 		course = ExamCourse.new()
 		add_child(course)
 		add_child(car)
@@ -71,7 +76,15 @@ func _ready() -> void:
 	if env.has("rain"):
 		add_child(env["rain"])
 
-	if m == "tutorial":
+	if m == "lesson":
+		car.global_transform = yard.spawn_xf
+		if Game.lesson_id != 1:
+			car.seatbelt = true
+		var lr := LessonRunner.new()
+		hud.root.add_child(lr)
+		lr.setup(hud, car, yard)
+		lr.finished.connect(_on_lesson_finished)
+	elif m == "tutorial":
 		car.global_transform = course.spawn_xf
 		var tut := Tutorial.new()
 		hud.root.add_child(tut)
@@ -244,6 +257,20 @@ func _on_tutorial_finished(_skipped: bool) -> void:
 			_result_shown = false],
 		[Game.t("to_menu"), func(): Game.goto_menu()],
 	], Color(0.45, 1.0, 0.55))
+
+
+func _on_lesson_finished() -> void:
+	Game.lessons_learned[Game.lesson_id] = true
+	Game.save_game()
+	_result_shown = true
+	hud.set_controls_enabled(false)
+	Sfx.play("win", -2.0)
+	var buttons := [[Game.t("ls_again"), func(): Game.start_drive("lesson")], [Game.t("to_menu"), func(): Game.goto_menu()]]
+	if Game.lesson_id < 4:
+		buttons.insert(0, [Game.t("next_lesson"), func():
+			Game.lesson_id += 1
+			Game.start_drive("lesson")])
+	UiTheme.dialog(hud, Game.t("ls_complete"), Game.t("lesson_l%d" % Game.lesson_id), buttons, Color(0.45, 1.0, 0.55))
 
 
 func _ask_rate() -> void:

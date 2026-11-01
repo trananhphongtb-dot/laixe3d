@@ -30,6 +30,8 @@ var lessons_done: Dictionary = {}
 var missions_done: Dictionary = {}
 var rate_asked: bool = false
 var tutorial_done: bool = false
+var lessons_learned: Dictionary = {}
+var lesson_id: int = 1
 var pending_mode: String = ""
 
 # Tham số cho lượt chơi sắp vào
@@ -142,6 +144,7 @@ func save_game() -> void:
 	c.set_value("main", "missions_done", missions_done)
 	c.set_value("main", "rate_asked", rate_asked)
 	c.set_value("main", "tutorial_done", tutorial_done)
+	c.set_value("main", "lessons_learned", lessons_learned)
 	c.save(SAVE_PATH)
 
 
@@ -168,6 +171,7 @@ func load_game() -> void:
 	missions_done = c.get_value("main", "missions_done", {})
 	rate_asked = c.get_value("main", "rate_asked", false)
 	tutorial_done = c.get_value("main", "tutorial_done", false)
+	lessons_learned = c.get_value("main", "lessons_learned", {})
 
 
 func mission_unlocked(i: int) -> bool:

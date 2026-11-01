@@ -2,10 +2,11 @@ class_name TouchSteer
 extends TouchCtl
 ## Vô lăng ảo: chạm và xoay. Giá trị +1 = đánh lái hết sang trái.
 
-const MAX_ROT := deg_to_rad(360.0)
+const MAX_ROT := deg_to_rad(540.0)   # 1,5 vòng mỗi bên như xe thật
 var value: float = 0.0
 var _rot: float = 0.0           # góc vô lăng trên màn hình (dương = theo chiều kim đồng hồ)
 var _last_ang: float = 0.0
+var car_speed: float = 0.0      # km/h, âm = đang lùi (HUD cập nhật)
 
 
 func touch_down(id: int, pos: Vector2) -> void:
@@ -33,7 +34,13 @@ func _angle(pos: Vector2) -> float:
 
 func _process(delta: float) -> void:
 	if not held and absf(_rot) > 0.001:
-		_rot = move_toward(_rot, 0.0, delta * 8.0)
+		# Tự trả lái như xe thật: đứng yên thì giữ nguyên, chạy tới về nhanh dần theo tốc độ, lùi về rất chậm
+		var rate := 0.0
+		if car_speed > 1.0:
+			rate = minf(1.2 + car_speed * 0.12, 9.0)
+		elif car_speed < -1.0:
+			rate = 0.5
+		_rot = move_toward(_rot, 0.0, delta * rate)
 		value = -_rot / MAX_ROT
 		queue_redraw()
 

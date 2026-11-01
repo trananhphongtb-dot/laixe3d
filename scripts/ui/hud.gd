@@ -430,6 +430,7 @@ func _process(delta: float) -> void:
 	var s := 0.0
 	var ctrl: String = Game.settings.get("control", "wheel")
 	if steer:
+		steer.car_speed = car.speed_ms * 3.6
 		s = steer.value
 	elif btn_left:
 		var target := 0.0
@@ -437,7 +438,12 @@ func _process(delta: float) -> void:
 			target += 1.0
 		if btn_right.held:
 			target -= 1.0
-		s = move_toward(car.steer_input, target, delta * (1.4 if target != 0.0 else 3.0))
+		var back_rate := 0.0
+		if car.speed_ms > 0.3:
+			back_rate = minf(0.4 + car.speed_kmh * 0.04, 3.0)
+		elif car.speed_ms < -0.3:
+			back_rate = 0.2
+		s = move_toward(car.steer_input, target, delta * (1.1 if target != 0.0 else back_rate))
 	elif ctrl == "tilt":
 		var acc := Input.get_accelerometer()
 		var v := -acc.x / 7.5

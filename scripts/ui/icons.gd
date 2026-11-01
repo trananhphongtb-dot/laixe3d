@@ -136,6 +136,11 @@ static func draw(ci: CanvasItem, name: String, c: Vector2, s: float, col: Color,
 		"lock":
 			ci.draw_rect(Rect2(c + Vector2(-h * 0.55, -h * 0.05), Vector2(h * 1.1, h * 0.8)), col)
 			ci.draw_arc(c + Vector2(0, -h * 0.1), h * 0.38, PI, TAU, 12, col, w, true)
+		"steer":
+			ci.draw_arc(c, h * 0.8, 0, TAU, 28, col, w * 1.2, true)
+			ci.draw_circle(c, h * 0.2, col)
+			for ang: float in [PI, 0.0, PI * 0.5]:
+				ci.draw_line(c, c + Vector2(cos(ang), sin(ang)) * h * 0.75, col, w, true)
 		"check":
 			ci.draw_polyline(PackedVector2Array([c + Vector2(-h * 0.6, 0), c + Vector2(-h * 0.15, h * 0.45), c + Vector2(h * 0.65, -h * 0.5)]), col, w * 1.3, true)
 
