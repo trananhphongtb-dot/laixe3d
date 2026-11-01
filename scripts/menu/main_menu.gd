@@ -355,6 +355,22 @@ func _update_stats() -> void:
 	var sub: Label = title_label.get_parent().get_node("Sub")
 	sub.text = Game.t("subtitle")
 	title_label.text = Game.t("app_title")
+	_fit_title()
+
+
+## Thu nhỏ tên game / dòng phụ cho vừa khoảng trống bên trái bảng menu (màn 16:9 hẹp hơn 20:9)
+func _fit_title() -> void:
+	if title_label == null:
+		return
+	var sub: Label = title_label.get_parent().get_node("Sub")
+	var avail := get_viewport().get_visible_rect().size.x - 640.0 - 150.0
+	for pair in [[title_label, 58, 30], [sub, 26, 16]]:
+		var l: Label = pair[0]
+		var f: Font = l.get_theme_font("font")
+		var fs: int = pair[1]
+		while fs > int(pair[2]) and f.get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > avail:
+			fs -= 2
+		l.add_theme_font_size_override("font_size", fs)
 
 
 func _clear() -> void:
