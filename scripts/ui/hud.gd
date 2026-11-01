@@ -34,6 +34,7 @@ var mirrors_root: Control
 var mirror_cams: Array = []    # [Camera3D, local Transform3D]
 var mirror_vps: Array[SubViewport] = []
 var controls_enabled: bool = true
+var keep_inputs: bool = false
 ## Khi đang khóa điều khiển (popup bài học), chạm vào một trong các nút này sẽ phát gate_passed rồi xử lý bình thường
 var gate_ctls: Array = []
 signal gate_passed(ctl: TouchCtl)
@@ -380,12 +381,22 @@ func set_cabin_view(v: bool) -> void:
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if v else SubViewport.UPDATE_DISABLED
 
 
-func set_controls_enabled(v: bool) -> void:
+## keep = true: khóa cảm ứng nhưng GIỮ NGUYÊN mức ga/phanh/vô lăng đang có (dùng khi hiện popup bài học)
+func set_controls_enabled(v: bool, keep: bool = false) -> void:
 	controls_enabled = v
+	keep_inputs = keep and not v
 	if not v:
 		for id in _touch_owner.keys():
 			var c: TouchCtl = _touch_owner[id]
-			c.touch_up(id)
+			if keep and c is TouchThrottle:
+				var tt := c as TouchThrottle
+				tt.held = false
+				tt.locked = tt.value > 0.0
+				tt.queue_redraw()
+			elif keep and c is TouchSteer:
+				c.held = false
+			else:
+				c.touch_up(id)
 		_touch_owner.clear()
 
 
@@ -505,7 +516,7 @@ func _process(delta: float) -> void:
 	var clu := clutch_p != null and clutch_p.value > 0.5
 	if Input.is_key_pressed(KEY_SHIFT):
 		clu = true
-	if not controls_enabled:
+	if not controls_enabled and not keep_inputs:
 		thr = 0.0
 		brk = 0.0
 		gas.set_value(0.0)

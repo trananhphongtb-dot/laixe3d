@@ -8,7 +8,8 @@ const I18N := preload("res://scripts/core/i18n.gd")
 signal language_changed
 signal money_changed
 
-var lang: String = "vi"
+var lang: String = "en"
+var lang_chosen: bool = false   # đã chọn ngôn ngữ ở lần mở đầu tiên
 var settings: Dictionary = {
 	"control": "wheel",        # wheel / tilt / buttons
 	"tilt_invert": false,
@@ -135,6 +136,7 @@ func apply_audio() -> void:
 func save_game() -> void:
 	var c := ConfigFile.new()
 	c.set_value("main", "lang", lang)
+	c.set_value("main", "lang_chosen", lang_chosen)
 	c.set_value("main", "settings", settings)
 	c.set_value("main", "money", money)
 	c.set_value("main", "cars_owned", cars_owned)
@@ -155,9 +157,10 @@ func load_game() -> void:
 	var c := ConfigFile.new()
 	if c.load(SAVE_PATH) != OK:
 		var loc := OS.get_locale_language()
-		lang = "vi" if loc == "vi" or loc == "" else "en"
+		lang = "en"
 		return
-	lang = c.get_value("main", "lang", "vi")
+	lang = c.get_value("main", "lang", "en")
+	lang_chosen = c.get_value("main", "lang_chosen", true)
 	var s: Dictionary = c.get_value("main", "settings", {})
 	for k in s.keys():
 		settings[k] = s[k]

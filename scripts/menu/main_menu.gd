@@ -34,6 +34,62 @@ func _ready() -> void:
 	Game.menu_open_page = "main"
 	Game.language_changed.connect(_on_lang)
 	Game.money_changed.connect(_update_stats)
+	if not Game.lang_chosen:
+		_first_language()
+
+
+## Lần đầu mở app: chọn ngôn ngữ (English chọn sẵn), chọn xong mới vào màn hình chính.
+func _first_language() -> void:
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = UiTheme.get_theme()
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = Color(0.03, 0.04, 0.06, 0.94)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(cc)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 22)
+	cc.add_child(vb)
+	var logo := TextureRect.new()
+	logo.texture = load("res://icon_fg.png")
+	logo.custom_minimum_size = Vector2(160, 160)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	vb.add_child(logo)
+	var t := UiTheme.label("Choose language · Chọn ngôn ngữ", 34, Color.WHITE)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.autowrap_mode = TextServer.AUTOWRAP_OFF
+	vb.add_child(t)
+	var sel := ["en"]
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 18)
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(hb)
+	var group := ButtonGroup.new()
+	for opt in [["en", "English"], ["vi", "Tiếng Việt"]]:
+		var b := Button.new()
+		b.text = opt[1]
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = opt[0] == "en"
+		b.custom_minimum_size = Vector2(260, 90)
+		b.add_theme_font_size_override("font_size", 32)
+		var code: String = opt[0]
+		b.pressed.connect(func():
+			sel[0] = code
+			Sfx.play("ui", -4.0))
+		hb.add_child(b)
+	var ok := UiTheme.button("OK  ›", func():
+		Game.lang_chosen = true
+		Game.set_language(sel[0])
+		root.queue_free(), 80)
+	ok.add_theme_font_size_override("font_size", 34)
+	vb.add_child(ok)
 
 
 func _on_lang() -> void:
