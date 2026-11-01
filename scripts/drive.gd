@@ -8,6 +8,7 @@ var cam_chase: Camera3D
 var cabin_view: bool = true
 var course: ExamCourse
 var yard: LessonYard
+var lesson_runner: LessonRunner
 var city: City
 var city_mode: CityMode
 var env: Dictionary
@@ -81,6 +82,7 @@ func _ready() -> void:
 		if Game.lesson_id != 1:
 			car.seatbelt = true
 		var lr := LessonRunner.new()
+		lesson_runner = lr
 		hud.root.add_child(lr)
 		lr.setup(hud, car, yard)
 		lr.finished.connect(_on_lesson_finished)
@@ -177,15 +179,20 @@ func _pause() -> void:
 	_pause_dlg = UiTheme.dialog(hud, Game.t("paused"), "", [
 		[Game.t("resume"), func():
 			_pause_dlg = null
-			get_tree().paused = false
-			hud.set_controls_enabled(true)],
+			var keep := is_instance_valid(lesson_runner) and lesson_runner.guided and not lesson_runner.compact
+			get_tree().paused = keep
+			hud.set_controls_enabled(not keep)],
 		[Game.t("restart"), func():
 			_pause_dlg = null
 			Game.start_drive(Game.mode)],
-		[Game.t("to_menu"), func():
+		[Game.t("go_back"), func():
 			_pause_dlg = null
 			Game.save_game()
 			Game.goto_menu()],
+		[Game.t("home"), func():
+			_pause_dlg = null
+			Game.save_game()
+			Game.goto_menu(true)],
 	])
 
 
@@ -260,17 +267,39 @@ func _on_tutorial_finished(_skipped: bool) -> void:
 
 
 func _on_lesson_finished() -> void:
+	var results: Array = lesson_runner.results.duplicate()
+	var elapsed: float = lesson_runner._t
+	await get_tree().process_frame
 	Game.lessons_learned[Game.lesson_id] = true
 	Game.save_game()
 	_result_shown = true
+	get_tree().set_deferred("paused", false)
 	hud.set_controls_enabled(false)
+	car.brake_input = 1.0
 	Sfx.play("win", -2.0)
-	var buttons := [[Game.t("ls_again"), func(): Game.start_drive("lesson")], [Game.t("to_menu"), func(): Game.goto_menu()]]
-	if Game.lesson_id < 4:
-		buttons.insert(0, [Game.t("next_lesson"), func():
-			Game.lesson_id += 1
+	var body := ""
+	var good := 0
+	for r in results:
+		var rr: Array = r
+		body += ("✓ " if rr[0] else "! ") + String(rr[1]) + "\n"
+		if rr[0]:
+			good += 1
+	var t := int(elapsed)
+	body += "\n" + Game.tf("ls_summary", [good, results.size(), t / 60, t % 60])
+	var buttons: Array = []
+	if Game.lesson_guided:
+		buttons.append([Game.t("ls_self"), func():
+			Game.lesson_guided = false
 			Game.start_drive("lesson")])
-	UiTheme.dialog(hud, Game.t("ls_complete"), Game.t("lesson_l%d" % Game.lesson_id), buttons, Color(0.45, 1.0, 0.55))
+	else:
+		buttons.append([Game.t("ls_again"), func(): Game.start_drive("lesson")])
+	if Game.lesson_id < 4:
+		buttons.append([Game.t("next_lesson"), func():
+			Game.lesson_id += 1
+			Game.lesson_guided = true
+			Game.start_drive("lesson")])
+	buttons.append([Game.t("to_menu"), func(): Game.goto_menu()])
+	UiTheme.dialog(hud, Game.t("ls_complete") + ": " + Game.t("lesson_l%d" % Game.lesson_id), body, buttons, Color(0.45, 1.0, 0.55))
 
 
 func _ask_rate() -> void:

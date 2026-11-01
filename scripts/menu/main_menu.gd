@@ -22,7 +22,8 @@ func _ready() -> void:
 	if garage_idx < 0:
 		garage_idx = 0
 	_show_car(Game.car_id, Game.car_color)
-	_show_page("main")
+	_show_page(Game.menu_open_page)
+	Game.menu_open_page = "main"
 	Game.language_changed.connect(_on_lang)
 	Game.money_changed.connect(_update_stats)
 
@@ -324,7 +325,6 @@ func _show_page(p: String) -> void:
 func _page_main() -> void:
 	var items := [
 		["flag", "menu_exam", "msub_exam", func(): _show_page("exam"), Color(0.98, 0.62, 0.12)],
-		["steer", "menu_lessons", "msub_lessons", func(): _show_page("lessons"), Color(0.35, 0.8, 1.0)],
 		["road", "menu_free", "msub_free", func(): _show_page("free"), Color(0.55, 0.65, 1.0)],
 		["target", "menu_missions", "msub_missions", func(): _show_page("missions"), Color(0.45, 0.9, 0.45)],
 		["car", "menu_garage", "msub_garage", func(): _show_page("garage"), Color(0.95, 0.4, 0.45)],
@@ -333,9 +333,14 @@ func _page_main() -> void:
 		["globe", "menu_language", "msub_language", func(): _show_page("language"), Color(0.3, 0.85, 0.75)],
 		["star", "menu_rate", "msub_rate", func(): Game.open_rate_page(), Color(1.0, 0.82, 0.2)],
 	]
-	# Thẻ lớn "Thi sa hình"
-	var first: Array = items[0]
-	var big := _card(first[0], Game.t(first[1]), Game.t(first[2]), first[3], 104, first[4])
+	# Chiều cao khả dụng để các thẻ giãn kín tới đáy màn hình
+	var avail := get_viewport().get_visible_rect().size.y - 40.0 - 4.0
+	var big_h := 132.0
+	var gap := 12.0
+	var row_h := floorf((avail - big_h - gap - gap * 3.0) / 4.0)
+	var big := _card("steer", Game.t("menu_lessons"), Game.t("msub_lessons"), func(): _show_page("lessons"), int(big_h), Color(0.35, 0.8, 1.0))
+	big.title_size = 36
+	big.sub_size = 19
 	content.add_child(big)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -343,9 +348,11 @@ func _page_main() -> void:
 	grid.add_theme_constant_override("v_separation", 12)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_child(grid)
-	for i in range(1, items.size()):
-		var it: Array = items[i]
-		grid.add_child(_card(it[0], Game.t(it[1]), Game.t(it[2]), it[3], 86, it[4]))
+	for it in items:
+		var c := _card(it[0], Game.t(it[1]), Game.t(it[2]), it[3], int(row_h), it[4])
+		c.title_size = 27
+		c.sub_size = 16
+		grid.add_child(c)
 
 
 func _page_exam() -> void:
@@ -370,7 +377,16 @@ func _page_lessons() -> void:
 		var done: bool = Game.lessons_learned.has(i)
 		var c := _card("check" if done else icons[i - 1], "%d. %s" % [i, Game.t("lesson_l%d" % i)], Game.t("lesson_l%d_sub" % i), func():
 			Game.lesson_id = n
-			Game.start_drive("lesson"), 82, Color(0.45, 0.9, 0.45) if done else Color(0.35, 0.8, 1.0))
+			UiTheme.dialog(ui, Game.t("lesson_l%d" % n), Game.t("ls_choose"), [
+				[Game.t("ls_guided"), func():
+					Game.lesson_guided = true
+					Game.start_drive("lesson")],
+				[Game.t("ls_self"), func():
+					Game.lesson_guided = false
+					Game.start_drive("lesson")],
+				[Game.t("cancel"), func(): pass],
+			]), 90, Color(0.45, 0.9, 0.45) if done else Color(0.35, 0.8, 1.0))
+		c.title_size = 26
 		content.add_child(c)
 
 

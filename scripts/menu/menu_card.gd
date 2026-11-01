@@ -6,6 +6,8 @@ var icon_name: String = ""
 var title: String = ""
 var sub: String = ""
 var accent := Color(0.98, 0.62, 0.12)
+var title_size: int = 28
+var sub_size: int = 17
 var _hover: float = 0.0
 static var _bold: Font
 
@@ -51,13 +53,14 @@ func _draw() -> void:
 	sb.anti_aliasing = true
 	draw_style_box(sb, r)
 	var a := 1.0 if not disabled else 0.4
-	var ic := Vector2(26 + size.y * 0.36, size.y * 0.5)
+	var ic := Vector2(26 + minf(size.y * 0.36, 42.0), size.y * 0.5)
 	if icon_name != "":
-		draw_circle(ic, size.y * 0.34, Color(accent.r, accent.g, accent.b, 0.22 * a))
-		Icons.draw(self, icon_name, ic, size.y * 0.36, Color(accent.r, accent.g, accent.b, a))
-	var x := ic.x + size.y * 0.5 if icon_name != "" else 22.0
+		var ir := minf(size.y * 0.34, 40.0)
+		draw_circle(ic, ir, Color(accent.r, accent.g, accent.b, 0.22 * a))
+		Icons.draw(self, icon_name, ic, ir * 1.05, Color(accent.r, accent.g, accent.b, a))
+	var x := ic.x + minf(size.y * 0.36, 42.0) + 18.0 if icon_name != "" else 22.0
 	var f := get_theme_default_font()
-	var tfs := 26 if sub != "" else 24
+	var tfs := title_size
 	var ty := size.y * 0.5 + (tfs * 0.36 if sub == "" else -2.0)
 	var tw := _bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs).x
 	while tw > size.x - x - 14 and tfs > 14:
@@ -65,7 +68,7 @@ func _draw() -> void:
 		tw = _bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs).x
 	draw_string(_bold, Vector2(x, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs, Color(1, 1, 1, a))
 	if sub != "":
-		var sfs := 16
+		var sfs := sub_size
 		while f.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, sfs).x > size.x - x - 12 and sfs > 11:
 			sfs -= 1
-		draw_string(f, Vector2(x, ty + 24), sub, HORIZONTAL_ALIGNMENT_LEFT, size.x - x - 8, sfs, Color(1, 1, 1, 0.6 * a))
+		draw_string(f, Vector2(x, ty + sfs + 8), sub, HORIZONTAL_ALIGNMENT_LEFT, size.x - x - 8, sfs, Color(1, 1, 1, 0.6 * a))

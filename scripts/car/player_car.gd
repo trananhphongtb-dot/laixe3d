@@ -6,6 +6,7 @@ signal crashed(impact: float)
 signal stalled
 signal engine_started
 signal gear_changed
+signal hint(key: String)
 
 const RATIOS := [3.6, 2.15, 1.45, 1.05, 0.82]
 const FINAL := 4.1
@@ -177,9 +178,14 @@ func current_gear_num() -> int:
 func set_auto_mode(m: String) -> void:
 	if manual or m == auto_mode:
 		return
-	# Chuyển R/D/P khi xe đang chạy nhanh thì không cho
-	if (m == "R" and speed_ms > 1.5) or (m == "D" and speed_ms < -1.5) or (m == "P" and absf(speed_ms) > 1.0):
+	# Như xe thật: rời số P phải đạp phanh; đổi D <-> R hoặc về P phải dừng hẳn
+	if auto_mode == "P" and brake_input < 0.1 and not handbrake:
+		hint.emit("hint_brake_to_shift")
+		return
+	var moving := absf(speed_ms) > 0.6
+	if moving and (m == "P" or (m == "R" and speed_ms > 0.0) or (m == "D" and speed_ms < 0.0)):
 		Sfx.play("grind", -6.0)
+		hint.emit("hint_stop_to_shift")
 		return
 	auto_mode = m
 	auto_gear = 1
@@ -370,6 +376,12 @@ func _physics_process(delta: float) -> void:
 
 	engine_force = force
 	brake = brake_v
+	# Lực cản khi chạy trớn: ma sát lăn + gió + phanh động cơ (số tự động, nhả ga)
+	if absf(speed_ms) > 0.3:
+		var resist := mass * 9.8 * 0.012 + 0.42 * speed_ms * speed_ms
+		if not manual and engine_on and (auto_mode == "D" or auto_mode == "R") and throttle < 0.05 and speed_kmh > 8.0:
+			resist += mass * 0.3
+		apply_central_force(-fwd * signf(speed_ms) * resist)
 	if handbrake:
 		wheels[2].brake = 30.0
 		wheels[3].brake = 30.0

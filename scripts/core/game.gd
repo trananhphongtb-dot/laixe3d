@@ -32,6 +32,9 @@ var rate_asked: bool = false
 var tutorial_done: bool = false
 var lessons_learned: Dictionary = {}
 var lesson_id: int = 1
+var lesson_guided: bool = true
+var return_page: String = "main"     # mục menu để quay lại sau khi chơi
+var menu_open_page: String = "main"
 var pending_mode: String = ""
 
 # Tham số cho lượt chơi sắp vào
@@ -187,13 +190,17 @@ func open_rate_page() -> void:
 	OS.shell_open("https://play.google.com/store/apps/details?id=" + PACKAGE)
 
 
-func goto_menu() -> void:
+func goto_menu(home: bool = false) -> void:
+	menu_open_page = "main" if home else return_page
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
 func start_drive(m: String) -> void:
 	# Lần đầu chơi: vào phần hướng dẫn có lái thử trước
+	var pages := {"exam": "exam", "practice": "exam", "lesson": "lessons", "free": "free", "mission": "missions"}
+	if pages.has(m):
+		return_page = pages[m]
 	if m != "tutorial" and not tutorial_done:
 		pending_mode = m
 		m = "tutorial"

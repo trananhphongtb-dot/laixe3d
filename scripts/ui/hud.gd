@@ -53,6 +53,7 @@ func setup(p_car: PlayerCar) -> void:
 	add_child(root)
 
 	_build_mirrors()
+	car.hint.connect(func(k: String): toast(Game.t(k), Color(1.0, 0.8, 0.3), 2.5))
 	_build_info()
 	_build_controls()
 	_build_gauges()
@@ -115,6 +116,10 @@ func _build_controls() -> void:
 	brake_p = TouchPedal.new()
 	brake_p.label = Game.t("hud_brake")
 	brake_p.color = Color(0.72, 0.16, 0.14)
+	brake_p.min_value = 0.12
+	brake_p.press_rate = 5.0
+	brake_p.release_rate = 10.0
+	brake_p.show_marks = true
 	_anchor(brake_p, BR, Vector2(-270, -240), Vector2(128, 224))
 	_add_touch(brake_p)
 	brake_p.pressed.connect(func(): gas.set_value(0.0))
@@ -166,35 +171,29 @@ func _build_controls() -> void:
 	b_blink_r.blink = true
 	b_blink_r.pressed.connect(func(): car.toggle_blinker(1))
 
-	# Hàng nút tròn trên bên phải
-	var x := -88.0
-	var pause := _btn("pause", "", TR, Vector2(x, 12), Vector2(74, 74))
+	# Nút tròn trên bên phải: 2 hàng x 3
+	var pause := _btn("pause", "", TR, Vector2(-88, 10), Vector2(74, 74))
 	pause.pressed.connect(func(): pause_requested.emit())
-	x -= 84
-	cam_btn = _btn("cam", Game.t("hud_cam"), TR, Vector2(x, 12), Vector2(74, 74))
-	cam_btn.pressed.connect(func(): camera_toggle.emit())
-	x -= 84
-	b_hb = _btn("handbrake", Game.t("hud_handbrake"), TR, Vector2(x, 12), Vector2(74, 74))
-	b_hb.toggle_color = Color(0.85, 0.15, 0.1)
-	b_hb.pressed.connect(func():
-		car.handbrake = not car.handbrake
-		Sfx.play("shift", -8.0))
-	x -= 84
-	b_light = _btn("light", Game.t("hud_lights"), TR, Vector2(x, 12), Vector2(74, 74))
-	b_light.toggle_color = Color(0.25, 0.55, 1.0)
-	b_light.pressed.connect(func():
-		car.set_lights(not car.lights_on)
-		Sfx.play("ui", -6.0))
-	x -= 84
-	b_belt = _btn("belt", Game.t("hud_belt"), TR, Vector2(x, 12), Vector2(74, 74))
+	b_belt = _btn("belt", Game.t("hud_belt"), TR, Vector2(-172, 10), Vector2(74, 74))
 	b_belt.toggle_color = Color(0.15, 0.72, 0.38)
 	b_belt.pressed.connect(func():
 		car.seatbelt = not car.seatbelt
 		Sfx.play("shift", -6.0))
-	x -= 84
-	b_horn = _btn("horn", Game.t("hud_horn"), TR, Vector2(x, 12), Vector2(74, 74))
+	b_horn = _btn("horn", Game.t("hud_horn"), TR, Vector2(-256, 10), Vector2(74, 74))
 	b_horn.pressed.connect(func(): car.set_horn(true))
 	b_horn.released.connect(func(): car.set_horn(false))
+	cam_btn = _btn("cam", Game.t("hud_cam"), TR, Vector2(-88, 92), Vector2(74, 74))
+	cam_btn.pressed.connect(func(): camera_toggle.emit())
+	b_hb = _btn("handbrake", Game.t("hud_handbrake"), TR, Vector2(-172, 92), Vector2(74, 74))
+	b_hb.toggle_color = Color(0.85, 0.15, 0.1)
+	b_hb.pressed.connect(func():
+		car.handbrake = not car.handbrake
+		Sfx.play("shift", -8.0))
+	b_light = _btn("light", Game.t("hud_lights"), TR, Vector2(-256, 92), Vector2(74, 74))
+	b_light.toggle_color = Color(0.25, 0.55, 1.0)
+	b_light.pressed.connect(func():
+		car.set_lights(not car.lights_on)
+		Sfx.play("ui", -6.0))
 
 
 func _build_gauges() -> void:
@@ -228,7 +227,7 @@ func _build_info() -> void:
 
 	toast_box = VBoxContainer.new()
 	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_anchor(toast_box, Control.PRESET_CENTER_TOP, Vector2(-330, 150), Vector2(660, 300))
+	_anchor(toast_box, Control.PRESET_CENTER_TOP, Vector2(-330, 172), Vector2(660, 300))
 	toast_box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	toast_box.add_theme_constant_override("separation", 6)
 	root.add_child(toast_box)
@@ -258,50 +257,73 @@ func _build_mirrors() -> void:
 	var top: float = d["top"]
 	var zf: float = d["zf"]
 	var eye: Vector3 = d["eye"]
-	# [vị trí trên màn hình, kích thước, vị trí camera, góc quay, fov]
+	# [vị trí, kích thước, vị trí camera, góc quay, fov, loại, nhãn]
 	var defs := [
-		[Control.PRESET_CENTER_TOP, Vector2(-190, 8), Vector2(380, 112), Vector3(0, eye.y + 0.05, eye.z - 0.3), 0.0, 38.0],
-		[Control.PRESET_TOP_LEFT, Vector2(10, 238), Vector2(210, 128), Vector3(W * 0.5 + 0.12, top + 0.15, zf - 0.25), deg_to_rad(-10.0), 34.0],
-		[Control.PRESET_TOP_RIGHT, Vector2(-220, 250), Vector2(210, 128), Vector3(-W * 0.5 - 0.12, top + 0.15, zf - 0.25), deg_to_rad(10.0), 34.0],
+		[Control.PRESET_CENTER_TOP, Vector2(-276, 8), Vector2(326, 114), Vector3(0, eye.y + 0.05, eye.z - 0.3), 0.0, 40.0, "rear", Game.t("cam_rear")],
+		[Control.PRESET_CENTER_TOP, Vector2(60, 8), Vector2(170, 156), Vector3.ZERO, 0.0, 0.0, "top", "360°"],
+		[Control.PRESET_TOP_LEFT, Vector2(10, 238), Vector2(210, 128), Vector3(W * 0.5 + 0.12, top + 0.15, zf - 0.25), deg_to_rad(-10.0), 34.0, "side", ""],
+		[Control.PRESET_TOP_RIGHT, Vector2(-220, 250), Vector2(210, 128), Vector3(-W * 0.5 - 0.12, top + 0.15, zf - 0.25), deg_to_rad(10.0), 34.0, "side", ""],
 	]
 	for df in defs:
 		var sz: Vector2 = df[2]
+		var kind: String = df[6]
 		var vp := SubViewport.new()
 		vp.size = Vector2i(int(sz.x * scale), int(sz.y * scale))
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		vp.msaa_3d = Viewport.MSAA_DISABLED
 		vp.positional_shadow_atlas_size = 0
 		var cam := Camera3D.new()
-		cam.cull_mask = 1
-		cam.fov = df[5]
-		cam.far = 160.0
 		cam.near = 0.2
+		cam.far = 160.0
+		if kind == "top":
+			cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+			cam.size = 9.5
+			cam.cull_mask = 1 | CarModel.LAYER_EXTERIOR
+			cam.far = 40.0
+		else:
+			cam.cull_mask = 1
+			cam.fov = df[5]
 		vp.add_child(cam)
 		add_child(vp)
-		# Gương nhìn ra sau: quay 180 độ (camera mặc định nhìn -Z, đuôi xe là -Z)
-		var pitch := deg_to_rad(-3.0) if df[0] == Control.PRESET_CENTER_TOP else deg_to_rad(-7.0)
+		var pitch := deg_to_rad(-3.0) if kind == "rear" else deg_to_rad(-7.0)
 		var local := Transform3D(Basis(Vector3.UP, float(df[4])) * Basis(Vector3.RIGHT, pitch), df[3])
-		mirror_cams.append([cam, local])
+		mirror_cams.append([cam, local, kind])
 		mirror_vps.append(vp)
+		# Khung viền rõ: viền sáng, bóng đổ
 		var frame := PanelContainer.new()
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.05, 0.05, 0.05)
-		sb.set_corner_radius_all(16)
-		sb.content_margin_left = 5
-		sb.content_margin_right = 5
-		sb.content_margin_top = 5
-		sb.content_margin_bottom = 5
+		sb.bg_color = Color(0.03, 0.03, 0.04)
+		sb.set_corner_radius_all(14)
+		sb.border_color = Color(0.78, 0.8, 0.85, 0.85)
+		sb.set_border_width_all(3)
+		sb.shadow_color = Color(0, 0, 0, 0.45)
+		sb.shadow_size = 6
+		sb.anti_aliasing = true
+		for side in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
+			sb.set_content_margin(side, 5)
 		frame.add_theme_stylebox_override("panel", sb)
 		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_anchor(frame, df[0], df[1], sz)
 		var tr := TextureRect.new()
 		tr.texture = vp.get_texture()
-		tr.flip_h = true
+		tr.flip_h = kind != "top"
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_SCALE
 		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		frame.add_child(tr)
 		mirrors_root.add_child(frame)
+		var label: String = df[7]
+		if label != "":
+			var lb := Label.new()
+			lb.text = label
+			lb.add_theme_font_size_override("font_size", 13)
+			lb.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+			lb.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+			lb.add_theme_constant_override("outline_size", 4)
+			lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var pos: Vector2 = df[1]
+			_anchor(lb, df[0], pos + Vector2(12, sz.y - 26), Vector2(120, 20))
+			mirrors_root.add_child(lb)
 
 
 # ------------------------------------------------------------------ API
@@ -518,7 +540,12 @@ func _process(delta: float) -> void:
 			var pair: Array = mirror_cams[i]
 			var cam: Camera3D = pair[0]
 			var local: Transform3D = pair[1]
-			cam.global_transform = xf * local
+			if pair[2] == "top":
+				var f := car.forward()
+				f.y = 0.0
+				cam.global_transform = Transform3D(Basis.looking_at(Vector3.DOWN, f.normalized()), xf.origin + Vector3(0, 15, 0))
+			else:
+				cam.global_transform = xf * local
 			mirror_vps[i].render_target_update_mode = SubViewport.UPDATE_ONCE if _mirror_frame % _mirror_every == 0 else SubViewport.UPDATE_DISABLED
 
 

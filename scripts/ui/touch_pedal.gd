@@ -7,6 +7,8 @@ var color := Color(0.3, 0.3, 0.3)
 var release_rate: float = 1.6     # mỗi giây giảm bao nhiêu khi thả tay
 var press_rate: float = 4.0
 var instant: bool = false         # côn: nhả ngay
+var min_value: float = 0.4        # mức nhẹ nhất khi chạm đáy
+var show_marks: bool = false      # vạch "rà" / "mạnh"
 var _target: float = 0.0
 
 
@@ -28,7 +30,7 @@ func touch_up(id: int) -> void:
 
 func _update(pos: Vector2) -> void:
 	var ly := (pos - global_position).y / maxf(size.y, 1.0)
-	_target = clampf(0.4 + (1.0 - ly) * 0.75, 0.4, 1.0)
+	_target = clampf(min_value + (1.0 - clampf((ly - 0.08) / 0.8, 0.0, 1.0)) * (1.0 - min_value), min_value, 1.0)
 
 
 func _process(delta: float) -> void:
@@ -69,6 +71,10 @@ func _draw() -> void:
 		fill.set_corner_radius_all(12)
 		draw_style_box(fill, Rect2(Vector2(pad.position.x, pad.end.y - h), Vector2(pad.size.x, h)))
 	var f := get_theme_default_font()
+	if show_marks:
+		var lw := Color(1, 1, 1, 0.75)
+		draw_string(f, Vector2(pad.position.x + 6, pad.position.y + 16), Game.t("brake_hard"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, lw)
+		draw_string(f, Vector2(pad.position.x + 6, pad.end.y - 6), Game.t("brake_soft"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, lw)
 	var fs := 16
 	var tw := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	while tw > r.size.x - 6 and fs > 10:

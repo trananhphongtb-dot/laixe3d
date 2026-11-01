@@ -20,6 +20,14 @@ var _t: float = 0.0
 var _ok_timer: float = -1.0
 var _stop_t: float = 0.0
 var _warn_cool: Dictionary = {}
+var guided: bool = true           # false = tự tập: không popup, cuối bài mới nhận xét
+var results: Array = []           # [đạt?, lời nhận xét] của các bước có chấm
+var try_b: Button
+var again_b: Button
+var compact: bool = false
+var _pending_note: String = ""
+var _pending_good: bool = true
+var _start_t: float = 0.0
 
 
 func setup(p_hud: Hud, p_car: PlayerCar, p_yard: LessonYard) -> void:
@@ -27,9 +35,11 @@ func setup(p_hud: Hud, p_car: PlayerCar, p_yard: LessonYard) -> void:
 	car = p_car
 	yard = p_yard
 	lesson = yard.lesson
+	guided = Game.lesson_guided
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	theme = UiTheme.get_theme()
+	process_physics_priority = 100
 	match lesson:
 		1:
 			_steps_stop()
@@ -219,69 +229,148 @@ func _steps_garage() -> void:
 func _build_card() -> void:
 	card = PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.07, 0.1, 0.93)
-	sb.set_corner_radius_all(20)
+	sb.bg_color = Color(0.06, 0.07, 0.1, 0.95)
+	sb.set_corner_radius_all(22)
 	sb.border_color = Color(0.35, 0.8, 1.0)
-	sb.set_border_width_all(2)
-	sb.shadow_color = Color(0, 0, 0, 0.45)
-	sb.shadow_size = 14
-	sb.content_margin_left = 22
-	sb.content_margin_right = 22
-	sb.content_margin_top = 14
-	sb.content_margin_bottom = 14
+	sb.set_border_width_all(3)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
+	sb.shadow_size = 18
+	for side in [SIDE_LEFT, SIDE_RIGHT]:
+		sb.set_content_margin(side, 26)
+	for side in [SIDE_TOP, SIDE_BOTTOM]:
+		sb.set_content_margin(side, 18)
 	card.add_theme_stylebox_override("panel", sb)
-	card.anchor_left = 0.5
-	card.anchor_right = 0.5
-	card.offset_left = -290
-	card.offset_right = 290
-	card.offset_top = 128
-	card.offset_bottom = 128
 	add_child(card)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
+	vb.add_theme_constant_override("separation", 10)
 	card.add_child(vb)
-	title_l = UiTheme.label("", 17, Color(0.35, 0.8, 1.0))
+	title_l = UiTheme.label("", 18, Color(0.35, 0.8, 1.0))
 	vb.add_child(title_l)
-	body_l = UiTheme.label("", 23, Color.WHITE)
-	body_l.custom_minimum_size = Vector2(536, 0)
-	vb.add_child(body_l)
-	note_l = UiTheme.label("", 22, Color(0.45, 1.0, 0.55))
+	note_l = UiTheme.label("", 23, Color(0.45, 1.0, 0.55))
 	note_l.visible = false
 	vb.add_child(note_l)
+	body_l = UiTheme.label("", 26, Color.WHITE)
+	body_l.custom_minimum_size = Vector2(600, 0)
+	vb.add_child(body_l)
 	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 10)
+	hb.add_theme_constant_override("separation", 12)
 	hb.alignment = BoxContainer.ALIGNMENT_END
 	vb.add_child(hb)
-	var again := UiTheme.button(Game.t("ls_retry"), func(): Game.start_drive("lesson"), 50)
-	again.custom_minimum_size.x = 150
-	again.add_theme_font_size_override("font_size", 19)
-	hb.add_child(again)
-	next_b = UiTheme.button(Game.t("tut_next"), func(): _go(idx + 1), 50)
-	next_b.custom_minimum_size.x = 150
+	again_b = UiTheme.button(Game.t("ls_retry"), func(): Game.start_drive("lesson"), 56)
+	again_b.custom_minimum_size.x = 150
+	again_b.add_theme_font_size_override("font_size", 20)
+	hb.add_child(again_b)
+	next_b = UiTheme.button(Game.t("tut_next"), func(): _go(idx + 1), 56)
+	next_b.custom_minimum_size.x = 170
 	hb.add_child(next_b)
+	try_b = UiTheme.button("▶ " + Game.t("ls_try"), func(): _set_compact(true), 56)
+	try_b.custom_minimum_size.x = 190
+	try_b.add_theme_font_size_override("font_size", 24)
+	hb.add_child(try_b)
+	if not guided:
+		card.visible = false
+
+
+## Thẻ lớn giữa màn hình (game tạm dừng) hoặc thanh nhắc nhỏ phía trên (đang làm thử).
+func _set_compact(v: bool) -> void:
+	compact = v
+	if v:
+		card.anchor_left = 0.5
+		card.anchor_right = 0.5
+		card.anchor_top = 0.0
+		card.anchor_bottom = 0.0
+		card.offset_left = -300
+		card.offset_right = 300
+		card.offset_top = 172
+		card.offset_bottom = 172
+		body_l.add_theme_font_size_override("font_size", 19)
+		body_l.custom_minimum_size = Vector2(560, 0)
+		note_l.visible = false
+		title_l.visible = false
+		for b in [again_b, next_b, try_b]:
+			b.visible = false
+		card.modulate.a = 0.88
+		_pause(false)
+	else:
+		card.anchor_left = 0.5
+		card.anchor_right = 0.5
+		card.anchor_top = 0.5
+		card.anchor_bottom = 0.5
+		card.offset_left = -330
+		card.offset_right = 330
+		card.offset_top = -150
+		card.offset_bottom = -150
+		body_l.add_theme_font_size_override("font_size", 26)
+		body_l.custom_minimum_size = Vector2(600, 0)
+		title_l.visible = true
+		again_b.visible = true
+		card.modulate.a = 1.0
+		_pause(true)
+	card.call_deferred("reset_size")
+	queue_redraw()
+
+
+func _pause(v: bool) -> void:
+	if not guided:
+		return
+	# Giữ xe đứng yên tại chỗ trong lúc đọc hướng dẫn, nhả ra thì chạy tiếp đúng vận tốc cũ
+	if v and not _holding:
+		_holding = true
+		_hold_xf = car.global_transform
+		_hold_vel = [car.linear_velocity, car.angular_velocity]
+	elif not v and _holding:
+		_holding = false
+		car.linear_velocity = _hold_vel[0]
+		car.angular_velocity = _hold_vel[1]
+	hud.set_controls_enabled(not v)
+
+
+var _holding: bool = false
+var _hold_xf: Transform3D
+var _hold_vel: Array = [Vector3.ZERO, Vector3.ZERO]
+
+
+func _physics_process(_delta: float) -> void:
+	if _holding:
+		car.global_transform = _hold_xf
+		car.linear_velocity = Vector3.ZERO
+		car.angular_velocity = Vector3.ZERO
 
 
 func _go(i: int) -> void:
 	idx = i
 	_ok_timer = -1.0
 	st = {}
-	note_l.visible = false
 	if idx >= steps.size():
 		_finish()
 		return
 	var s: Dictionary = steps[idx]
+	var tap: bool = s.get("tap", false)
+	if not guided and tap:
+		if s.has("enter"):
+			var ecb: Callable = s["enter"]
+			ecb.call()
+		_go(idx + 1)
+		return
 	title_l.text = "%s · %s %d/%d" % [Game.t("lesson_l%d" % lesson).to_upper(), Game.t("step_word"), idx + 1, steps.size()]
 	body_l.text = Game.t(s["k"])
-	var tap: bool = s.get("tap", false)
+	note_l.text = _pending_note
+	note_l.add_theme_color_override("font_color", Color(0.45, 1.0, 0.55) if _pending_good else Color(1.0, 0.75, 0.3))
+	note_l.visible = _pending_note != ""
+	_pending_note = ""
 	next_b.visible = tap
+	try_b.visible = not tap
 	next_b.text = Game.t("ls_finish") if idx == steps.size() - 1 else Game.t("tut_next")
 	if s.has("enter"):
 		var cb: Callable = s["enter"]
 		cb.call()
+	if guided:
+		_set_compact(false)
 	queue_redraw()
 
 
 func _finish() -> void:
+	_pause(false)
 	set_process(false)
 	visible = false
 	finished.emit()
@@ -298,7 +387,8 @@ func _warn(key: String, cool: float = 4.0) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	_stop_t = _stop_t + delta if car.speed_kmh < 0.6 else 0.0
+	if not _holding:
+		_stop_t = _stop_t + delta if car.speed_kmh < 0.6 else 0.0
 	queue_redraw()
 	if idx < 0 or idx >= steps.size():
 		return
@@ -318,10 +408,7 @@ func _process(delta: float) -> void:
 			st["cut"] = true
 	if s.has("warn_late") and car.front_point().z > float(s["warn_late"]) - 6.0 and car.blinker != 1:
 		_warn("l2_signal_late")
-	if _ok_timer >= 0.0:
-		_ok_timer -= delta
-		if _ok_timer < 0.0:
-			_go(idx + 1)
+	if guided and not compact:
 		return
 	if s.has("ok"):
 		var cb: Callable = s["ok"]
@@ -333,15 +420,16 @@ func _process(delta: float) -> void:
 				var r: Array = jcb.call()
 				good = r[0]
 				msg = ("✓ " if good else "! ") + String(r[1])
-			note_l.text = msg
-			note_l.add_theme_color_override("font_color", Color(0.45, 1.0, 0.55) if good else Color(1.0, 0.75, 0.3))
-			note_l.visible = true
-			_ok_timer = 1.4 if good else 3.0
+			if s.has("judge"):
+				results.append([good, msg.substr(2)])
 			Sfx.play("ding" if good else "tock", -5.0)
+			_pending_note = msg
+			_pending_good = good
+			_go(idx + 1)
 
 
 func _draw() -> void:
-	if idx < 0 or idx >= steps.size():
+	if not guided or idx < 0 or idx >= steps.size():
 		return
 	var s: Dictionary = steps[idx]
 	var t: Control = s.get("t")
