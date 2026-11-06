@@ -2,7 +2,7 @@ class_name TouchSteer
 extends TouchCtl
 ## Vô lăng ảo: chạm và xoay. Giá trị +1 = đánh lái hết sang trái.
 
-const MAX_ROT := deg_to_rad(540.0)   # 1,5 vòng mỗi bên như xe thật
+const MAX_ROT := deg_to_rad(270.0)   # 0,75 vòng mỗi bên: trên màn cảm ứng quay ít hơn xe thật cho đỡ mỏi tay
 var value: float = 0.0
 var _rot: float = 0.0           # góc vô lăng trên màn hình (dương = theo chiều kim đồng hồ)
 var _last_ang: float = 0.0
@@ -27,6 +27,13 @@ func touch_move(_id: int, pos: Vector2) -> void:
 	queue_redraw()
 
 
+## Đưa vô lăng về giữa ngay (dùng khi quay lại đoạn trước)
+func reset() -> void:
+	_rot = 0.0
+	value = 0.0
+	queue_redraw()
+
+
 func _angle(pos: Vector2) -> float:
 	var c := global_position + size * 0.5
 	return (pos - c).angle()
@@ -34,13 +41,19 @@ func _angle(pos: Vector2) -> float:
 
 func _process(delta: float) -> void:
 	if not held and absf(_rot) > 0.001:
-		# Tự trả lái như xe thật: đứng yên thì giữ nguyên, chạy tới về nhanh dần theo tốc độ, lùi về rất chậm
-		var rate := 0.0
+		# Tự trả lái như xe thật: đứng yên thì giữ nguyên; đang chạy thì lực trả tỉ lệ với góc đang đánh
+		# (đánh càng nhiều về càng nhanh) cộng một tốc độ tối thiểu, nên về giữa trong khoảng 1 giây.
+		var lin := 0.0     # tốc độ tối thiểu (rad/s)
+		var k := 0.0       # hệ số tỉ lệ theo góc (1/s)
 		if car_speed > 1.0:
-			rate = minf(1.2 + car_speed * 0.12, 9.0)
+			lin = minf(3.0 + car_speed * 0.15, 10.0)
+			k = minf(3.0 + car_speed * 0.1, 8.0)
 		elif car_speed < -1.0:
-			rate = 0.5
-		_rot = move_toward(_rot, 0.0, delta * rate)
+			lin = 1.5
+			k = 1.5
+		if lin > 0.0:
+			var step := maxf(delta * lin, absf(_rot) * (1.0 - exp(-k * delta)))
+			_rot = move_toward(_rot, 0.0, step)
 		value = -_rot / MAX_ROT
 		queue_redraw()
 

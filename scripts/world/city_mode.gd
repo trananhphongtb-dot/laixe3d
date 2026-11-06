@@ -37,7 +37,11 @@ var _hist_t: float = 0.0
 var _holding: bool = false
 var _hold_xf: Transform3D
 var _popup: Control
-const REWIND_S := 5.0
+const REWIND_S := 8.0          # mặc định lùi bao nhiêu giây
+const HIST_KEEP := 16.0       # lưu lịch sử bấy nhiêu giây
+# Lỗi báo muộn (xi nhan, đèn đỏ, sai làn) cần lùi xa hơn để kịp tới trước chỗ sai
+const REWIND_BY := {"v_red_light": 12.0, "v_no_signal": 12.0, "v_wrong_lane": 10.0, "v_speed": 7.0, "v_crash": 8.0}
+var _countdown: bool = false
 
 
 func setup(p_city: City, p_car: PlayerCar, p_hud: Hud, p_mission: int) -> void:
@@ -102,22 +106,22 @@ func _violation_popup(key: String) -> void:
 
 
 func _rewind(key: String) -> void:
+	var back: float = float(REWIND_BY.get(key, REWIND_S))
 	var snap: Dictionary = _hist[0]
 	for h in _hist:
 		var d: Dictionary = h
-		if float(d["t"]) <= time - REWIND_S:
+		if float(d["t"]) <= time - back:
 			snap = d
-	_holding = false
 	car.global_transform = snap["xf"]
-	car.linear_velocity = snap["lv"]
-	car.angular_velocity = snap["av"]
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
 	car.auto_mode = snap["mode"]
 	car.gear = snap["gear"]
 	car.blinker = snap["blink"]
 	car.set_lights(snap["lights"])
 	car.handbrake = snap["hb"]
 	car.seatbelt = snap["belt"]
-	hud.set_controls_enabled(true, true)
+	hud.reset_steering()
 	hud.gas.set_value(snap["gas"])
 	hud.gas.locked = snap["gas_l"]
 	hud.brake_p.set_value(snap["brake"])
@@ -134,8 +138,30 @@ func _rewind(key: String) -> void:
 	_in_x = false
 	_wrong_t = 0.0
 	_last_pos = car.global_position
-	hud.toast(Game.t("rw_done"), UiTheme.ACCENT, 2.5)
+	_hold_xf = car.global_transform
+	_holding = true
 	Sfx.play("ui", -4.0)
+	_resume_after_countdown(snap["lv"], snap["av"])
+
+
+## Xe đứng yên 3 giây (vô lăng đã về giữa) để người chơi chuẩn bị, rồi mới chạy lại với tốc độ cũ
+func _resume_after_countdown(lv: Vector3, av: Vector3) -> void:
+	_countdown = true
+	hud.set_controls_enabled(false, true)
+	hud.toast(Game.t("rw_done"), UiTheme.ACCENT, 2.5)
+	for n in [3, 2, 1]:
+		hud.toast(str(n), Color(1.0, 0.85, 0.3), 0.9)
+		Sfx.play("tick", -4.0)
+		await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree():
+			return
+	hud.toast(Game.t("rw_go"), Color(0.5, 1.0, 0.5), 1.5)
+	Sfx.play("ding", -4.0)
+	_countdown = false
+	_holding = false
+	car.linear_velocity = lv
+	car.angular_velocity = av
+	hud.set_controls_enabled(true, true)
 
 
 func _on_crash(_impact: float) -> void:
@@ -156,7 +182,7 @@ func _physics_process(delta: float) -> void:
 		if _hist_t <= 0.0:
 			_hist_t = 0.1
 			_hist.append(_snapshot())
-			while _hist.size() > 0 and time - float(_hist[0]["t"]) > REWIND_S + 3.0:
+			while _hist.size() > 0 and time - float(_hist[0]["t"]) > HIST_KEEP:
 				_hist.pop_front()
 	var p := car.global_position
 	var h := car.forward()

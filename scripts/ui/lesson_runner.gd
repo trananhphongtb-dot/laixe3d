@@ -40,6 +40,7 @@ var note_l: Label
 var hint_l: Label
 var next_b: Button
 
+var _cd: bool = false                        # đang đếm 3-2-1 sau khi làm lại
 var _holding: bool = false
 var _hold_xf: Transform3D
 var _hold_vel: Array = [Vector3.ZERO, Vector3.ZERO]
@@ -745,6 +746,7 @@ func _restore(d: Dictionary) -> void:
 	car.global_transform = d["xf"]
 	car.linear_velocity = d["lv"]
 	car.angular_velocity = d["av"]
+	hud.reset_steering()
 	_hold_xf = d["xf"]
 	_hold_vel = [d["lv"], d["av"]]
 	car.auto_mode = d["mode"]
@@ -792,16 +794,33 @@ func _fail(msg: String) -> void:
 				_note_good = false
 				_go(idx, true)
 			else:
-				_pause(false, true)
+				_pause(true, true)
 				st = {"grace": true}
 				if s.has("enter"):
-					(s["enter"] as Callable).call()],
+					(s["enter"] as Callable).call()
+				_countdown_resume()],
 		[Game.t("ls_continue_btn"), func():
 			_fail_dlg = null
 			_pause(false, true)
 			_note = ""
 			_go(idx + 1)],
 	], Color(1.0, 0.5, 0.35))
+
+
+## Làm lại ở chế độ tự lái: xe đứng yên 3 giây (vô lăng đã về giữa) rồi mới chạy tiếp với tốc độ cũ
+func _countdown_resume() -> void:
+	_cd = true
+	hud.toast(Game.t("rw_done"), UiTheme.ACCENT, 2.5)
+	for n in [3, 2, 1]:
+		hud.toast(str(n), Color(1.0, 0.85, 0.3), 0.9)
+		Sfx.play("tick", -4.0)
+		await get_tree().create_timer(1.0).timeout
+		if not is_inside_tree():
+			return
+	hud.toast(Game.t("rw_go"), Color(0.5, 1.0, 0.5), 1.5)
+	Sfx.play("ding", -4.0)
+	_cd = false
+	_pause(false, true)
 
 
 func _pass(s: Dictionary) -> void:
@@ -836,6 +855,9 @@ func _warn(key: String, cool: float = 4.0) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _cd:
+		queue_redraw()
+		return
 	if not _holding:
 		_stop_t = _stop_t + delta if car.speed_kmh < 0.6 else 0.0
 	queue_redraw()

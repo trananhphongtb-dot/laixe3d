@@ -19,6 +19,7 @@ var _last_y: float = 0.0
 var _still_t: float = 0.0
 var _decay_from: float = 0.0
 var _decay_t: float = -1.0
+var _cancelled: bool = false  # bị cần kia ghi đè: bỏ qua ngón đang đặt cho tới khi chạm lại
 
 
 func touch_down(id: int, pos: Vector2) -> void:
@@ -26,10 +27,22 @@ func touch_down(id: int, pos: Vector2) -> void:
 	_last_y = pos.y
 	_still_t = 0.0
 	_decay_t = -1.0
+	_cancelled = false
 	locked = false
 
 
+## Về 0 ngay (kể cả đang giữ cố định hoặc còn ngón đặt trên cần): dùng khi người chơi kéo cần đối diện
+func cancel() -> void:
+	value = 0.0
+	locked = false
+	_decay_t = -1.0
+	_cancelled = true
+	queue_redraw()
+
+
 func touch_move(_id: int, pos: Vector2) -> void:
+	if _cancelled:
+		return
 	var dy := pos.y - _last_y
 	_last_y = pos.y
 	if absf(dy) > 1.5:

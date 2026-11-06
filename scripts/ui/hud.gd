@@ -127,10 +127,9 @@ func _build_controls() -> void:
 	brake_p.bottom_label = Game.t("brake_soft")
 	_anchor(brake_p, BR, Vector2(-262, -350), Vector2(120, 334))
 	_add_touch(brake_p)
-	brake_p.pressed.connect(func():
-		gas.value = 0.0
-		gas.locked = false
-		gas.queue_redraw())
+	# Kéo phanh thì ga về 0 ngay; kéo ga thì phanh về 0 ngay (kể cả đang giữ cố định)
+	brake_p.pressed.connect(func(): gas.cancel())
+	gas.pressed.connect(func(): brake_p.cancel())
 	var gx := -356.0
 	if car.manual:
 		clutch_p = TouchPedal.new()
@@ -370,6 +369,14 @@ func toast(text: String, color: Color = Color.WHITE, dur: float = 3.0) -> void:
 	tw.tween_callback(pc.queue_free)
 
 
+## Đưa vô lăng (ảo và bánh xe) về giữa: dùng sau khi quay lại đoạn trước
+func reset_steering() -> void:
+	if steer:
+		steer.reset()
+	car.steer_input = 0.0
+	car.steering = 0.0
+
+
 func set_target(pos: Variant, text: String = "") -> void:
 	target_pos = pos
 	target_label = text
@@ -495,10 +502,10 @@ func _process(delta: float) -> void:
 			target -= 1.0
 		var back_rate := 0.0
 		if car.speed_ms > 0.3:
-			back_rate = minf(0.4 + car.speed_kmh * 0.04, 3.0)
+			back_rate = minf(1.6 + car.speed_kmh * 0.08, 5.0)
 		elif car.speed_ms < -0.3:
-			back_rate = 0.2
-		s = move_toward(car.steer_input, target, delta * (1.1 if target != 0.0 else back_rate))
+			back_rate = 0.8
+		s = move_toward(car.steer_input, target, delta * (1.6 if target != 0.0 else back_rate))
 	elif ctrl == "tilt":
 		var acc := Input.get_accelerometer()
 		var v := -acc.x / 7.5
