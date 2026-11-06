@@ -52,6 +52,13 @@ func _draw() -> void:
 	sb.shadow_size = 6
 	sb.anti_aliasing = true
 	draw_style_box(sb, r)
+	draw_line(Vector2(26, 2), Vector2(size.x - 26, 2), Color(1, 1, 1, 0.07), 2.0)
+	var rpad := 14.0
+	if size.x > 400.0 and not disabled:
+		rpad = 44.0
+		var cx := size.x - 28.0
+		var cy := size.y * 0.5
+		draw_polyline(PackedVector2Array([Vector2(cx - 5, cy - 10), Vector2(cx + 5, cy), Vector2(cx - 5, cy + 10)]), Color(1, 1, 1, 0.4), 3.0, true)
 	var a := 1.0 if not disabled else 0.4
 	var ic := Vector2(26 + minf(size.y * 0.36, 42.0), size.y * 0.5)
 	if icon_name != "":
@@ -63,7 +70,7 @@ func _draw() -> void:
 	var tfs := title_size
 	var ty := size.y * 0.5 + (tfs * 0.36 if sub == "" else -2.0)
 	var tw := _bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs).x
-	while tw > size.x - x - 14 and tfs > 14:
+	while tw > size.x - x - rpad and tfs > 14:
 		tfs -= 1
 		tw = _bold.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs).x
 	draw_string(_bold, Vector2(x, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, tfs, Color(1, 1, 1, a))

@@ -51,20 +51,100 @@ static func build(kind: String, parent: Node3D, b: MeshBatch, sb: StaticBody3D, 
 	var hx := (x1 - x0) * 0.5
 	var hz := (z1 - z0) * 0.5
 	match kind:
+		"field":
+			Scenery.rice_fields(b, Rect2(x0, z0, hx * 2.0, hz * 2.0), [], rng.randi())
+			_edge_trees(b, c, hx, hz, rng)
+			return
+		"hill":
+			Scenery.tea_hills(b, Rect2(x0, z0, hx * 2.0, hz * 2.0), [], rng.randi())
+			return
+		"forest":
+			_forest(b, c, hx, hz, rng)
+			return
+		"village":
+			_village(b, c, hx, hz, rng)
+			return
+		"res":
+			_residential(b, sb, c, hx, hz, rng)
+			return
+	# Công trình đặc biệt có cỡ cố định: khối lớn hơn thì đặt giữa, phần thừa trồng cây
+	var ex := minf(hx, 58.0)
+	var ez := minf(hz, 58.0)
+	match kind:
 		"park":
-			_park(parent, b, sb, c, hx, hz, rng)
+			_park(parent, b, sb, c, ex, ez, rng)
 		"school":
-			_school(parent, b, sb, c, hx, hz, rng)
+			_school(parent, b, sb, c, ex, ez, rng)
 		"market":
-			_market(parent, b, sb, c, hx, hz, rng)
+			_market(parent, b, sb, c, ex, ez, rng)
 		"gas":
-			_gas(parent, b, sb, c, hx, hz, rng)
+			_gas(parent, b, sb, c, ex, ez, rng)
 		"factory":
-			_factory(parent, b, sb, c, hx, hz, rng)
+			_factory(parent, b, sb, c, ex, ez, rng)
 		"temple":
-			_temple(parent, b, sb, c, hx, hz, rng)
+			_temple(parent, b, sb, c, ex, ez, rng)
 		_:
 			_residential(b, sb, c, hx, hz, rng)
+	if hx > ex + 4.0 or hz > ez + 4.0:
+		_scatter_outside(b, c, hx, hz, ex, ez, rng)
+
+
+## Cây rải ở phần khối nằm ngoài công trình ở giữa
+static func _scatter_outside(b: MeshBatch, c: Vector3, hx: float, hz: float, ex: float, ez: float, rng: RandomNumberGenerator) -> void:
+	var cnt := int((hx * hz * 4.0 - ex * ez * 4.0) / 700.0)
+	for k in cnt:
+		var p := Vector3(rng.randf_range(-hx + 4.0, hx - 4.0), 0, rng.randf_range(-hz + 4.0, hz - 4.0))
+		if absf(p.x) < ex + 4.0 and absf(p.z) < ez + 4.0:
+			continue
+		Scenery.tree(b, c + p, rng.randf_range(0.9, 1.4))
+
+
+static func _edge_trees(b: MeshBatch, c: Vector3, hx: float, hz: float, rng: RandomNumberGenerator) -> void:
+	var cnt := int(hx * hz / 2600.0)
+	for k in cnt:
+		var side := rng.randi_range(0, 3)
+		var p := Vector3(rng.randf_range(-hx, hx), 0, rng.randf_range(-hz, hz))
+		match side:
+			0:
+				p.x = -hx + 2.0
+			1:
+				p.x = hx - 2.0
+			2:
+				p.z = -hz + 2.0
+			_:
+				p.z = hz - 2.0
+		Scenery.tree(b, c + p, rng.randf_range(0.9, 1.3))
+
+
+## Rừng: cây dày, lát nền tối. Mật độ giảm theo mức đồ họa để máy yếu vẫn mượt.
+static func _forest(b: MeshBatch, c: Vector3, hx: float, hz: float, rng: RandomNumberGenerator) -> void:
+	Scenery._theme_mats()
+	MeshBatch.mat("forest_floor", Color(0.15, 0.28, 0.13), 1.0)
+	b.box("forest_floor", c + Vector3(0, 0.03, 0), Vector3(hx * 2.0, 0.06, hz * 2.0))
+	var cell: float = [17.0, 13.0, 11.0][clampi(Scenery.gfx(), 0, 2)]
+	var x := -hx + 4.0
+	while x < hx - 3.0:
+		var z := -hz + 4.0
+		while z < hz - 3.0:
+			if rng.randf() < 0.78:
+				var p := c + Vector3(x + rng.randf_range(-cell * 0.4, cell * 0.4), 0, z + rng.randf_range(-cell * 0.4, cell * 0.4))
+				if rng.randf() < 0.65:
+					Scenery.pine(b, p, rng.randf_range(0.9, 1.7))
+				else:
+					Scenery.tree(b, p, rng.randf_range(1.0, 1.6))
+			z += cell
+		x += cell
+
+
+## Làng: hai dãy nhà mái ngói quay ra đường, phía sau là ruộng
+static func _village(b: MeshBatch, c: Vector3, hx: float, hz: float, rng: RandomNumberGenerator) -> void:
+	var cnt := clampi(int(hx * 2.0 / 15.0), 3, 14)
+	var rows: Array = []
+	for s: float in [-1.0, 1.0]:
+		var zc := c.z + s * (hz - 16.0)
+		Scenery.village(b, Vector3(c.x, 0, zc), cnt, Vector3(0, 0, -s), rng.randi())
+		rows.append(Rect2(c.x - hx, zc - 14.0, hx * 2.0, 28.0))
+	Scenery.rice_fields(b, Rect2(c.x - hx, c.z - hz, hx * 2.0, hz * 2.0), rows, rng.randi())
 
 
 # ------------------------------------------------------------------ tiện ích
@@ -186,13 +266,15 @@ static func _tx(vi: String, en: String) -> String:
 # ------------------------------------------------------------------ nhà ở: 3 x 3 khối nhà cao thấp
 static func _residential(b: MeshBatch, sb: StaticBody3D, c: Vector3, hx: float, hz: float, rng: RandomNumberGenerator) -> void:
 	b.box("c_walk", c + Vector3(0, 0.05, 0), Vector3(hx * 2, 0.12, hz * 2))
-	var n := 3
-	var w := hx * 2.0 / n
-	var d := hz * 2.0 / n
-	for ix in n:
-		for iz in n:
+	# số nhà theo kích thước khối: khối nhỏ 3x3 như cũ, khối dài thì nhiều nhà hơn, không phình nhà ra
+	var nx := clampi(roundi(hx * 2.0 / 40.0), 2, 8)
+	var nz := clampi(roundi(hz * 2.0 / 40.0), 2, 8)
+	var w := hx * 2.0 / nx
+	var d := hz * 2.0 / nz
+	for ix in nx:
+		for iz in nz:
 			var p := c + Vector3(-hx + w * (ix + 0.5), 0, -hz + d * (iz + 0.5))
-			if ix == 1 and iz == 1:
+			if ix > 0 and ix < nx - 1 and iz > 0 and iz < nz - 1:
 				# sân trong: cây xanh
 				b.box("cb_grass", p + Vector3(0, 0.13, 0), Vector3(w - 4, 0.04, d - 4))
 				for k in 4:

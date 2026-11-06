@@ -21,6 +21,7 @@ static func get_theme() -> Theme:
 	t.set_stylebox("normal", "Button", normal)
 	t.set_stylebox("hover", "Button", hover)
 	t.set_stylebox("pressed", "Button", pressed)
+	t.set_stylebox("hover_pressed", "Button", pressed)
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_stylebox("disabled", "Button", disabled)
 	t.set_color("font_color", "Button", Color(0.95, 0.95, 0.97))
@@ -33,6 +34,11 @@ static func get_theme() -> Theme:
 	panel.content_margin_right = 22
 	panel.content_margin_top = 18
 	panel.content_margin_bottom = 18
+	panel.set_corner_radius_all(24)
+	panel.border_width_top = 5
+	panel.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.9)
+	panel.shadow_color = Color(0, 0, 0, 0.55)
+	panel.shadow_size = 26
 	t.set_stylebox("panel", "PanelContainer", panel)
 	t.set_color("font_color", "Label", Color(0.93, 0.94, 0.96))
 	t.set_font_size("font_size", "Label", 26)
@@ -82,9 +88,13 @@ static func get_theme() -> Theme:
 static func _sb(bg: Color, border: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
-	s.set_corner_radius_all(12)
+	s.set_corner_radius_all(16)
 	s.border_color = border
 	s.set_border_width_all(2)
+	s.shadow_color = Color(0, 0, 0, 0.3)
+	s.shadow_size = 4
+	s.shadow_offset = Vector2(0, 3)
+	s.anti_aliasing = true
 	s.content_margin_left = 16
 	s.content_margin_right = 16
 	s.content_margin_top = 10
@@ -148,6 +158,7 @@ static func dialog(parent: Node, title: String, body: String, buttons: Array, ti
 	hb.add_theme_constant_override("separation", 12)
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
 	vb.add_child(hb)
+	var first := true
 	for bdef in buttons:
 		var cb: Callable = bdef[1]
 		var b := button(str(bdef[0]), func():
@@ -155,6 +166,15 @@ static func dialog(parent: Node, title: String, body: String, buttons: Array, ti
 			cb.call())
 		b.custom_minimum_size = Vector2(180, 74)
 		b.add_theme_font_size_override("font_size", 26)
+		if first and buttons.size() > 1:
+			var pri := _sb(Color(0.9, 0.52, 0.08, 1.0), Color(1, 1, 1, 0.35))
+			b.add_theme_stylebox_override("normal", pri)
+			b.add_theme_stylebox_override("hover", pri)
+			b.add_theme_color_override("font_color", Color.WHITE)
+		first = false
 		hb.add_child(b)
 	parent.add_child(root)
+	# hiện dần cho mềm mắt (chạy cả khi game đang tạm dừng)
+	root.modulate.a = 0.0
+	root.create_tween().tween_property(root, "modulate:a", 1.0, 0.18)
 	return root

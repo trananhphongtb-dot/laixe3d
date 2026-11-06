@@ -44,6 +44,11 @@ var practice_lesson: int = 1
 var free_night: bool = false
 var free_rain: bool = false
 var free_theme: String = "random"
+var race_theme: String = "random"
+var race_laps: int = 2
+var race_level: int = 1
+var race_night: bool = false
+var race_rain: bool = false
 var force_theme: String = "random"   # dùng cho kiểm thử
 var mission_id: int = 0
 
@@ -203,7 +208,7 @@ func goto_menu(home: bool = false) -> void:
 
 func start_drive(m: String) -> void:
 	# Lần đầu chơi: vào phần hướng dẫn có lái thử trước
-	var pages := {"exam": "exam", "practice": "exam", "lesson": "lessons", "free": "free", "mission": "missions"}
+	var pages := {"exam": "exam", "practice": "exam", "lesson": "lessons", "free": "free", "mission": "missions", "race": "race"}
 	if pages.has(m):
 		return_page = pages[m]
 	if m != "tutorial" and not tutorial_done:

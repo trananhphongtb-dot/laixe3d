@@ -422,6 +422,8 @@ func _show_page(p: String) -> void:
 			_page_lessons()
 		"free":
 			_page_free()
+		"race":
+			_page_race()
 		"missions":
 			_page_missions()
 		"garage":
@@ -440,18 +442,19 @@ func _page_main() -> void:
 	var items := [
 		["flag", "menu_exam", "msub_exam", func(): _show_page("exam"), Color(0.98, 0.62, 0.12)],
 		["road", "menu_free", "msub_free", func(): _show_page("free"), Color(0.55, 0.65, 1.0)],
+		["trophy", "menu_race", "msub_race", func(): _show_page("race"), Color(1.0, 0.55, 0.3)],
 		["target", "menu_missions", "msub_missions", func(): _show_page("missions"), Color(0.45, 0.9, 0.45)],
 		["car", "menu_garage", "msub_garage", func(): _show_page("garage"), Color(0.95, 0.4, 0.45)],
 		["gear", "menu_settings", "msub_settings", func(): _show_page("settings"), Color(0.7, 0.72, 0.8)],
 		["book", "menu_guide", "msub_guide", func(): _show_page("guide"), Color(0.75, 0.55, 1.0)],
 		["globe", "menu_language", "msub_language", func(): _show_page("language"), Color(0.3, 0.85, 0.75)],
-		["star", "menu_rate", "msub_rate", func(): Game.open_rate_page(), Color(1.0, 0.82, 0.2)],
 	]
 	# Chiều cao khả dụng để các thẻ giãn kín tới đáy màn hình
 	var avail := get_viewport().get_visible_rect().size.y - 40.0 - 4.0
 	var big_h := 140.0
 	var gap := 12.0
-	var row_h := floorf((avail - big_h - gap - gap * 3.0) / 4.0)
+	var slim_h := 64.0
+	var row_h := floorf((avail - big_h - slim_h - gap * 6.0) / 4.0)
 	var big := _card("steer", Game.t("menu_lessons"), Game.t("msub_lessons"), func(): _show_page("lessons"), int(big_h), Color(0.35, 0.8, 1.0))
 	big.title_size = 40
 	big.sub_size = 23
@@ -467,6 +470,9 @@ func _page_main() -> void:
 		c.title_size = 31
 		c.sub_size = 19
 		grid.add_child(c)
+	var rate := _card("star", Game.t("menu_rate"), "", func(): Game.open_rate_page(), int(slim_h), Color(1.0, 0.82, 0.2))
+	rate.title_size = 27
+	content.add_child(rate)
 
 
 func _page_exam() -> void:
@@ -549,6 +555,36 @@ func _page_free() -> void:
 	go.add_theme_font_size_override("font_size", 30)
 	content.add_child(go)
 	content.add_child(UiTheme.label(Game.t("free_desc"), 24, Color(0.8, 0.82, 0.88)))
+	_back()
+
+
+func _page_race() -> void:
+	_header(Game.t("menu_race"))
+	content.add_child(UiTheme.label(Game.t("theme"), 27))
+	var tg := _toggle_row([["random", Game.t("th_random")], ["country", Game.t("th_country")], ["tea", Game.t("th_tea")],
+		["coast", Game.t("th_coast")], ["lake", Game.t("th_lake")], ["forest", Game.t("th_forest")], ["mountain", Game.t("th_mountain")]],
+		Game.race_theme, func(v): Game.race_theme = v)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	for ch in tg.get_children():
+		tg.remove_child(ch)
+		grid.add_child(ch)
+	tg.queue_free()
+	content.add_child(grid)
+	content.add_child(UiTheme.label(Game.t("race_level"), 27))
+	content.add_child(_toggle_row([[0, Game.t("lv_easy")], [1, Game.t("lv_mid")], [2, Game.t("lv_hard")]], Game.race_level, func(v): Game.race_level = v))
+	content.add_child(UiTheme.label(Game.t("race_laps"), 27))
+	content.add_child(_toggle_row([[1, "1"], [2, "2"], [3, "3"]], Game.race_laps, func(v): Game.race_laps = v))
+	content.add_child(UiTheme.label(Game.t("time_of_day"), 27))
+	content.add_child(_toggle_row([[false, Game.t("day")], [true, Game.t("night")]], Game.race_night, func(v): Game.race_night = v))
+	content.add_child(UiTheme.label(Game.t("weather"), 27))
+	content.add_child(_toggle_row([[false, Game.t("sunny")], [true, Game.t("rainy")]], Game.race_rain, func(v): Game.race_rain = v))
+	var go := UiTheme.button(Game.t("start"), func(): Game.start_drive("race"), 76)
+	go.add_theme_font_size_override("font_size", 30)
+	content.add_child(go)
+	content.add_child(UiTheme.label(Game.t("race_desc"), 24, Color(0.8, 0.82, 0.88)))
 	_back()
 
 

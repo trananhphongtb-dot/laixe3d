@@ -21,6 +21,7 @@ var toast_box: VBoxContainer
 var compass: Control
 var target_pos: Variant = null
 var target_label: String = ""
+var target_hide_dist: bool = false   # chỉ hiện hướng, không ghi khoảng cách (đua xe)
 var b_blink_l: TouchCtl
 var b_blink_r: TouchCtl
 var b_hazard: TouchCtl
@@ -608,5 +609,9 @@ func _draw_compass() -> void:
 	var txt := "%d m" % int(dist)
 	if target_label != "":
 		txt = target_label + " · " + txt
+	if target_hide_dist:
+		txt = target_label
+		if txt == "":
+			return
 	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
 	compass.draw_string(f, Vector2(80 - tw * 0.5, 108), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)

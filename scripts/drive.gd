@@ -11,6 +11,8 @@ var yard: LessonYard
 var lesson_runner: LessonRunner
 var city: City
 var city_mode: CityMode
+var race_track: RaceTrack
+var race_mode: RaceMode
 var env: Dictionary
 var night: bool = false
 var rain: bool = false
@@ -27,13 +29,19 @@ func _ready() -> void:
 	if m == "free":
 		night = Game.free_night
 		rain = Game.free_rain
+	elif m == "race":
+		night = Game.race_night
+		rain = Game.race_rain
 	elif m == "mission":
 		var md: Dictionary = Game.MISSIONS[Game.mission_id]
 		night = md["night"]
 		rain = md["rain"]
 	env = EnvBuilder.build(self, night, rain)
 	Scenery.cur_rain = rain
-	Scenery.pick_theme(Game.free_theme if m == "free" else Game.force_theme)
+	if m == "race":
+		Scenery.pick_race_theme(Game.race_theme if Game.force_theme == "random" else Game.force_theme)
+	else:
+		Scenery.pick_theme(Game.free_theme if m == "free" else Game.force_theme)
 
 	car = PlayerCar.new()
 	car.setup(Game.car_spec(), Game.COLORS[Game.car_color % Game.COLORS.size()], Game.settings.get("transmission", "auto") == "manual")
@@ -47,8 +55,12 @@ func _ready() -> void:
 		course = ExamCourse.new()
 		add_child(course)
 		add_child(car)
+	elif m == "race":
+		race_track = RaceTrack.new(Scenery.theme, night, rain, randi())
+		add_child(race_track)
+		add_child(car)
 	else:
-		city = City.new(night)
+		city = City.new(night, Game.mission_id * 37 + 7000 if m == "mission" else -1)
 		add_child(city)
 		add_child(car)
 		city_mode = CityMode.new()
@@ -100,18 +112,55 @@ func _ready() -> void:
 		if m == "exam":
 			Game.exam_tries += 1
 			Game.save_game()
+	elif m == "race":
+		_setup_race()
 	else:
 		city_mode.city = city
 		car.global_transform = city_mode.spawn_transform()
 		city_mode.setup(city, car, hud, Game.mission_id if m == "mission" else -1)
 		city_mode.mission_finished.connect(_on_mission_finished)
 		var g: int = Game.settings.get("graphics", 1)
-		city.spawn_traffic([8, 12, 16][g])
+		city.spawn_traffic(city.traffic_for([8, 12, 16][g]))
 		if night:
 			car.set_lights(true)
 		if m == "free":
 			hud.toast(Game.t("free_hint"), UiTheme.ACCENT, 5.0)
 	_chase_snap()
+
+
+func _setup_race() -> void:
+	var lv: int = Game.race_level
+	var styles := ["sedan", "hatch", "suv", "pickup"]
+	var slots := [[-6.0, -2.3], [-6.0, 2.3], [-12.0, -2.3]]
+	var base: float = [9.5, 12.0, 14.5][clampi(lv, 0, 2)]
+	var bots: Array = []
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for k in slots.size():
+		var bot := RaceBot.new()
+		var spec: Dictionary = Game.CARS[styles[(k + rng.randi() % 3) % styles.size()]]
+		var col: Color = Game.COLORS[rng.randi_range(0, Game.COLORS.size() - 1)]
+		bot.setup(race_track, spec, col, slots[k][0], slots[k][1], base * rng.randf_range(0.93, 1.07), night, k < 2)
+		add_child(bot)
+		bots.append(bot)
+	race_mode = RaceMode.new()
+	add_child(race_mode)
+	race_mode.setup(race_track, car, hud, bots, Game.race_laps, lv)
+	race_mode.race_finished.connect(_on_race_finished)
+	if night:
+		car.set_lights(true)
+
+
+func _on_race_finished(rank: int, time: float, reward: int) -> void:
+	_end_common()
+	await get_tree().create_timer(1.2).timeout
+	var t := int(time)
+	var body := Game.tf("race_result", [rank, t / 60, t % 60, reward])
+	var title := Game.t("race_win") if rank == 1 else Game.tf("race_rank", [rank])
+	UiTheme.dialog(hud, title, body, [
+		[Game.t("retry"), func(): Game.start_drive("race")],
+		[Game.t("to_menu"), func(): Game.goto_menu()],
+	], Color(0.4, 1.0, 0.5) if rank <= 2 else Color(1.0, 0.8, 0.3))
 
 
 func _chase_snap() -> void:

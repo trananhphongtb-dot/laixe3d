@@ -4,7 +4,10 @@ extends RefCounted
 
 static var _mats: Dictionary = {}
 
-var _tools: Dictionary = {}   # key vật liệu -> SurfaceTool
+var _tools: Dictionary = {}   # key vật liệu (+ ô) -> SurfaceTool
+## > 0: chia mesh theo ô vuông cạnh `chunk` mét. Máy chỉ vẽ ô đang nằm trong tầm nhìn
+## (và trong vùng đổ bóng), nên bản đồ càng dài càng đỡ nặng hơn nhiều.
+var chunk: float = 0.0
 var _box := BoxMesh.new()
 var _cyl := CylinderMesh.new()
 var _sph := SphereMesh.new()
@@ -52,31 +55,34 @@ static func unshaded(key: String, color: Color) -> StandardMaterial3D:
 	return m
 
 
-func _tool(key: String) -> SurfaceTool:
-	if not _tools.has(key):
+func _tool(key: String, pos: Vector3 = Vector3.ZERO) -> SurfaceTool:
+	var k := key
+	if chunk > 0.0:
+		k = "%s|%d|%d" % [key, floori(pos.x / chunk), floori(pos.z / chunk)]
+	if not _tools.has(k):
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		_tools[key] = st
-	return _tools[key]
+		_tools[k] = st
+	return _tools[k]
 
 
 ## Hộp: tâm `pos`, kích thước `size`, quay quanh trục Y `yaw`.
 func box(key: String, pos: Vector3, size: Vector3, yaw: float = 0.0) -> void:
 	var b := Basis(Vector3.UP, yaw) * Basis.from_scale(size)
-	_tool(key).append_from(_box, 0, Transform3D(b, pos))
+	_tool(key, pos).append_from(_box, 0, Transform3D(b, pos))
 
 
 func box_basis(key: String, basis: Basis, pos: Vector3, size: Vector3) -> void:
-	_tool(key).append_from(_box, 0, Transform3D(basis * Basis.from_scale(size), pos))
+	_tool(key, pos).append_from(_box, 0, Transform3D(basis * Basis.from_scale(size), pos))
 
 
 func cyl(key: String, pos: Vector3, radius: float, height: float) -> void:
 	var b := Basis.from_scale(Vector3(radius * 2.0, height, radius * 2.0))
-	_tool(key).append_from(_cyl, 0, Transform3D(b, pos))
+	_tool(key, pos).append_from(_cyl, 0, Transform3D(b, pos))
 
 
 func sphere(key: String, pos: Vector3, size: Vector3) -> void:
-	_tool(key).append_from(_sph, 0, Transform3D(Basis.from_scale(size), pos))
+	_tool(key, pos).append_from(_sph, 0, Transform3D(Basis.from_scale(size), pos))
 
 
 ## Dải phẳng nằm trên mặt đất từ a đến b (vạch kẻ, mặt đường).
@@ -98,7 +104,7 @@ func commit(parent: Node, shadows: bool = true) -> void:
 		var m := st.commit()
 		var mi := MeshInstance3D.new()
 		mi.mesh = m
-		mi.material_override = _mats.get(key)
+		mi.material_override = _mats.get(key.get_slice("|", 0))
 		if not shadows:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)

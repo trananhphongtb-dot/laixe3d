@@ -6,10 +6,17 @@ static var _tex: Dictionary = {}
 static var cur_rain: bool = false
 static var theme: String = "country"     # country · tea · coast · lake
 const THEMES := ["country", "tea", "coast", "lake"]
+const RACE_THEMES := ["country", "tea", "coast", "lake", "forest", "mountain"]
 
 
 static func pick_theme(want: String) -> String:
 	theme = want if THEMES.has(want) else THEMES[randi() % THEMES.size()]
+	return theme
+
+
+## Chọn cảnh cho đường đua (có thêm rừng và núi)
+static func pick_race_theme(want: String) -> String:
+	theme = want if RACE_THEMES.has(want) else RACE_THEMES[randi() % RACE_THEMES.size()]
 	return theme
 
 
@@ -413,6 +420,7 @@ static func _slab(b: MeshBatch, sb: StaticBody3D, basis: Basis, pos: Vector3, si
 ## Cảnh nền chung: núi, mây, đồng lúa vòng quanh một vùng
 static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: float, night: bool, rain: bool, rseed: int, extra_exclude: Array = []) -> void:
 	var b := MeshBatch.new()
+	b.chunk = 160.0
 	var area := Rect2(center.x - outer_r, center.z - outer_r, outer_r * 2.0, outer_r * 2.0)
 	var excl := [inner]
 	excl.append_array(extra_exclude)
@@ -430,9 +438,15 @@ static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: flo
 			far_col = Color(0.33, 0.52, 0.24)
 		_:
 			rice_fields(b, area, excl, rseed)
+	backdrop(parent, b, center, outer_r, night, rain, far_col)
+
+
+## Nền xa + mặt đất đi được + núi + mây (dùng chung cho thành phố và đường đua)
+static func backdrop(parent: Node3D, b: MeshBatch, center: Vector3, outer_r: float, night: bool, rain: bool, far_col: Color, mountain_r: float = -1.0) -> void:
+	var far := outer_r * 2.4
 	# nền xa: mảng lớn phủ kín tới chân núi
 	MeshBatch._mats.erase("far_field")
-	MeshBatch.mat("far_field", far_col if not night else Color(0.1, 0.16, 0.08), 1.0)
+	MeshBatch.mat("far_field", far_col if not night else far_col.darkened(0.65), 1.0)
 	texturize("far_field", 0.08, 0.35, 0.05)
 	b.box("far_field", center + Vector3(0, -0.06, 0), Vector3(far * 2.0, 0.05, far * 2.0))
 	b.commit(parent)
@@ -442,7 +456,7 @@ static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: flo
 	gcs.shape = WorldBoundaryShape3D.new()
 	gb.add_child(gcs)
 	parent.add_child(gb)
-	mountains(parent, center, maxf(outer_r * 2.2, 420.0), night)
+	mountains(parent, center, mountain_r if mountain_r > 0.0 else maxf(outer_r * 2.2, 420.0), night)
 	clouds(parent, center, outer_r * 2.0, night, rain)
 
 
@@ -466,6 +480,7 @@ static func _theme_mats() -> void:
 	MeshBatch.mat("flower1", Color(0.98, 0.8, 0.2), 0.9)
 	MeshBatch.mat("flower2", Color(0.85, 0.85, 0.95), 0.9)
 	MeshBatch.mat("boat", Color(0.55, 0.3, 0.15), 0.8)
+	MeshBatch.mat("rock", Color(0.5, 0.48, 0.45), 0.95)
 	texturize("sand", 0.3, 0.25, 0.2)
 	texturize("tea_soil", 0.4, 0.3, 0.2)
 	texturize("lawn", 0.25, 0.3, 0.12)

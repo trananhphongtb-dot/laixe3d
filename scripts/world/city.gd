@@ -3,14 +3,30 @@ extends Node3D
 ## Thành phố dạng lưới: đường 2 chiều (đi bên phải), ngã tư có đèn, nhà cửa, xe AI.
 
 const N := 4                 # số nút mỗi cạnh
-const B := 120.0             # khoảng cách giữa 2 ngã tư
+const B := 220.0             # khoảng cách trung bình giữa 2 ngã tư (thực tế mỗi khúc dài ngắn khác nhau, xem xs/zs)
 const RW := 6.5              # nửa bề rộng mặt đường
 const LANE := 1.75           # tâm làn xe chạy cách tim đường
 const PARK := 5.0            # tâm làn đỗ xe
 const STOP_D := 9.0          # vạch dừng cách tâm ngã tư
 const DIRS := [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]
+const GAPS := [150.0, 190.0, 240.0, 300.0, 360.0]
+const URBAN := ["res", "school", "market", "gas", "factory", "temple"]
+# Tỉ lệ các loại khối theo kiểu cảnh: phố thì nhiều nhà, quê thì nhiều ruộng và rừng
+const MIX := {
+	"country": {"field": 34, "forest": 16, "village": 18, "res": 12, "park": 6, "market": 4, "gas": 4, "temple": 6},
+	"tea": {"hill": 34, "forest": 22, "village": 14, "field": 8, "res": 10, "park": 4, "gas": 4, "temple": 4},
+	"coast": {"res": 30, "park": 14, "village": 14, "market": 8, "forest": 10, "field": 8, "gas": 6, "school": 6, "temple": 4},
+	"lake": {"park": 24, "res": 22, "forest": 16, "village": 10, "school": 8, "temple": 8, "field": 6, "market": 3, "gas": 3},
+}
 
 var batch := MeshBatch.new()
+var xs: Array = []               # toạ độ x của các hàng ngã tư (khoảng cách không đều nhau)
+var zs: Array = []               # toạ độ z của các cột ngã tư
+var EX: float = 0.0              # mép đông
+var EZ: float = 0.0              # mép nam
+var kinds: Dictionary = {}       # Vector2i (khối) -> loại khối
+var lit: Dictionary = {}         # Vector2i (nút) -> có đèn tín hiệu
+var layout_seed: int = -1        # < 0: ngẫu nhiên mỗi lần chơi
 var night: bool = false
 var lights: Dictionary = {}      # Vector2i -> {mats:[ns, ew], t, phase, offset}
 var ai_cars: Array = []
@@ -21,13 +37,16 @@ var _rng := RandomNumberGenerator.new()
 const PHASES := [["G", "R", 9.0], ["Y", "R", 3.0], ["R", "R", 1.5], ["R", "G", 9.0], ["R", "Y", 3.0], ["R", "R", 1.5]]
 
 
-func _init(p_night: bool = false) -> void:
+func _init(p_night: bool = false, p_seed: int = -1) -> void:
 	night = p_night
+	layout_seed = p_seed
 
 
 func _ready() -> void:
 	_rng.seed = 2024
+	batch.chunk = 160.0
 	_mats()
+	_layout()
 	_build()
 	Scenery.texturize("c_asph", 0.35, 0.3, 0.25)
 	Scenery.texturize("c_walk", 0.6, 0.3, 0.3)
@@ -48,6 +67,7 @@ func _mats() -> void:
 	MeshBatch.mat("c_lamp_pole", Color(0.3, 0.32, 0.35), 0.5, 0.0, 0.5)
 	MeshBatch.mat("c_lamp", Color(1.0, 0.85, 0.55), 0.5, 3.0 if night else 0.3)
 	MeshBatch.mat("c_wall_border", Color(0.55, 0.55, 0.52), 0.9)
+	MeshBatch.mat("bund_road", Color(0.48, 0.44, 0.32), 1.0)
 	var palette := [Color(0.85, 0.8, 0.7), Color(0.7, 0.75, 0.8), Color(0.9, 0.88, 0.85), Color(0.75, 0.6, 0.5),
 		Color(0.6, 0.65, 0.6), Color(0.95, 0.9, 0.75), Color(0.5, 0.55, 0.65)]
 	for i in palette.size():
@@ -56,7 +76,99 @@ func _mats() -> void:
 
 
 func node_pos(i: int, j: int) -> Vector3:
-	return Vector3(i * B, 0, j * B)
+	return Vector3(xs[i], 0, zs[j])
+
+
+## Sinh khoảng cách giữa các ngã tư (khúc ngắn khúc dài), loại khối và nút có đèn
+func _layout() -> void:
+	var rng := RandomNumberGenerator.new()
+	if layout_seed >= 0:
+		rng.seed = layout_seed
+	else:
+		rng.randomize()
+	xs = _gaps_axis(rng)
+	zs = _gaps_axis(rng)
+	EX = float(xs[N - 1])
+	EZ = float(zs[N - 1])
+	# loại khối theo kiểu cảnh đang chọn
+	var mix: Dictionary = MIX.get(Scenery.theme, MIX["country"])
+	var total := 0
+	for k in mix.keys():
+		total += int(mix[k])
+	for i in N - 1:
+		for j in N - 1:
+			var r := rng.randi_range(0, total - 1)
+			var kind := "res"
+			for k in mix.keys():
+				r -= int(mix[k])
+				if r < 0:
+					kind = String(k)
+					break
+			kinds[Vector2i(i, j)] = kind
+	kinds[Vector2i(0, 0)] = "res" if Scenery.theme != "tea" else "village"
+	# đèn tín hiệu chỉ đặt ở nơi có khu dân cư; đường quê thì thưa đèn
+	var n_lit := 0
+	for i in N:
+		for j in N:
+			var urban := 0
+			for dx in [-1, 0]:
+				for dz in [-1, 0]:
+					var bk := Vector2i(i + dx, j + dz)
+					if kinds.has(bk) and URBAN.has(kinds[bk]):
+						urban += 1
+			var on := urban >= 2
+			lit[Vector2i(i, j)] = on
+			if on:
+				n_lit += 1
+	if n_lit < 3:
+		for nd in [Vector2i(1, 1), Vector2i(2, 2), Vector2i(1, 2)]:
+			lit[nd] = true
+
+
+func _gaps_axis(rng: RandomNumberGenerator) -> Array:
+	var g: Array = []
+	for i in N - 1:
+		g.append(float(GAPS[rng.randi_range(0, GAPS.size() - 1)]))
+	# luôn có cả khúc ngắn lẫn khúc dài
+	var mx := -1.0
+	var mn := 1e9
+	for v in g:
+		mx = maxf(mx, float(v))
+		mn = minf(mn, float(v))
+	if mx < 300.0:
+		g[rng.randi_range(0, g.size() - 1)] = 330.0
+	if mn > 200.0:
+		var k := rng.randi_range(0, g.size() - 1)
+		if float(g[k]) < 320.0:
+			g[k] = 160.0
+		else:
+			g[(k + 1) % g.size()] = 160.0
+	var a: Array = [0.0]
+	for v in g:
+		a.append(float(a[a.size() - 1]) + float(v))
+	return a
+
+
+func edge_len(a: Vector2i, d: Vector3) -> float:
+	var b := a + Vector2i(int(d.x), int(d.z))
+	return node_pos(a.x, a.y).distance_to(node_pos(b.x, b.y))
+
+
+## Toạ độ đường lưới gần nhất (để nhận diện đi sai làn)
+func snap_x(x: float) -> float:
+	var best := float(xs[0])
+	for v in xs:
+		if absf(float(v) - x) < absf(best - x):
+			best = float(v)
+	return best
+
+
+func snap_z(z: float) -> float:
+	var best := float(zs[0])
+	for v in zs:
+		if absf(float(v) - z) < absf(best - z):
+			best = float(v)
+	return best
 
 
 func node_ok(i: int, j: int) -> bool:
@@ -68,26 +180,25 @@ static func right_of(d: Vector3) -> Vector3:
 
 
 func _build() -> void:
-	var size := (N - 1) * B
-	var center := Vector3(size * 0.5, 0, size * 0.5)
-	EnvBuilder.ground(self, Vector2(size + 160, size + 160), center, Color(0.29, 0.42, 0.22) if not night else Color(0.12, 0.18, 0.1))
+	var center := Vector3(EX * 0.5, 0, EZ * 0.5)
+	EnvBuilder.ground(self, Vector2(EX + 160, EZ + 160), center, Color(0.29, 0.42, 0.22) if not night else Color(0.12, 0.18, 0.1))
 	# Đường
 	for i in N:
 		for j in N:
 			var p := node_pos(i, j)
 			batch.box("c_asph", p + Vector3(0, -0.005, 0), Vector3(RW * 2, 0.03, RW * 2))
 			if node_ok(i + 1, j):
-				_road(p, node_pos(i + 1, j))
+				_road(p, node_pos(i + 1, j), lit[Vector2i(i, j)] and lit[Vector2i(i + 1, j)], i * 7 + j)
 			if node_ok(i, j + 1):
-				_road(p, node_pos(i, j + 1))
+				_road(p, node_pos(i, j + 1), lit[Vector2i(i, j)] and lit[Vector2i(i, j + 1)], i * 5 + j + 40)
 			var count := 0
 			for d: Vector3 in DIRS:
 				var nb := Vector2i(i, j) + Vector2i(int(d.x), int(d.z))
 				if node_ok(nb.x, nb.y):
 					count += 1
-			if count >= 3:
+			if count >= 3 and lit[Vector2i(i, j)]:
 				_intersection(i, j)
-	# Khu nhà
+	# Khu nhà / ruộng / rừng
 	var bsb := StaticBody3D.new()
 	add_child(bsb)
 	for i in N - 1:
@@ -95,27 +206,28 @@ func _build() -> void:
 			var a := node_pos(i, j)
 			var c := node_pos(i + 1, j + 1)
 			var m := RW + 3.2
-			CityBlocks.build(CityBlocks.KINDS.get(Vector2i(i, j), "res"), self, batch, bsb, a.x + m, c.x - m, a.z + m, c.z - m, _rng)
+			CityBlocks.build(String(kinds[Vector2i(i, j)]), self, batch, bsb, a.x + m, c.x - m, a.z + m, c.z - m, _rng)
 	_outskirts()
 	# Tường bao (phía đông mở ra ngoại ô)
 	var sb := StaticBody3D.new()
 	add_child(sb)
-	var E := size
 	var gp := 16.0
+	var z1: float = zs[1]
+	var z2: float = zs[2]
 	var walls := [
-		[Vector3(-30, 1.5, E * 0.5), Vector3(1, 3, E + 60)],
-		[Vector3(E * 0.5, 1.5, -30), Vector3(E + 60, 3, 1)],
-		[Vector3(E * 0.5, 1.5, E + 30), Vector3(E + 60, 3, 1)],
-		# phía đông thành phố: chừa 2 lối ra ở z = B và z = 2B
-		_wall_z(E + 30, -30, B - gp),
-		_wall_z(E + 30, B + gp, 2 * B - gp),
-		_wall_z(E + 30, 2 * B + gp, E + 30),
+		[Vector3(-30, 1.5, EZ * 0.5), Vector3(1, 3, EZ + 60)],
+		[Vector3(EX * 0.5, 1.5, -30), Vector3(EX + 60, 3, 1)],
+		[Vector3(EX * 0.5, 1.5, EZ + 30), Vector3(EX + 60, 3, 1)],
+		# phía đông thành phố: chừa 2 lối ra ở z = zs[1] và z = zs[2]
+		_wall_z(EX + 30, -30, z1 - gp),
+		_wall_z(EX + 30, z1 + gp, z2 - gp),
+		_wall_z(EX + 30, z2 + gp, EZ + 30),
 		# rào quanh vùng ngoại ô
-		[Vector3((E + 30 + OUT_X + 40) * 0.5, 1.0, -60), Vector3(OUT_X + 40 - E - 30, 2, 1)],
-		[Vector3((E + 30 + OUT_X + 40) * 0.5, 1.0, E + 60), Vector3(OUT_X + 40 - E - 30, 2, 1)],
-		[Vector3(OUT_X + 40, 1.0, E * 0.5), Vector3(1, 2, E + 120)],
-		_wall_z(E + 30, -60, -30),
-		_wall_z(E + 30, E + 30, E + 60),
+		[Vector3((EX + 30 + OUT_X + 40) * 0.5, 1.0, -60), Vector3(OUT_X + 40 - EX - 30, 2, 1)],
+		[Vector3((EX + 30 + OUT_X + 40) * 0.5, 1.0, EZ + 60), Vector3(OUT_X + 40 - EX - 30, 2, 1)],
+		[Vector3(OUT_X + 40, 1.0, EZ * 0.5), Vector3(1, 2, EZ + 120)],
+		_wall_z(EX + 30, -60, -30),
+		_wall_z(EX + 30, EZ + 30, EZ + 60),
 	]
 	for w in walls:
 		var c: Vector3 = w[0]
@@ -134,10 +246,10 @@ func _wall_z(x: float, za: float, zb: float) -> Array:
 
 
 ## Ngoại ô: đường quê vòng qua đồng lúa, sông và 2 cây cầu, làng mái ngói, cột điện.
-const EDGE := (N - 1) * B          # mép đông thành phố
-const RIVER_X := EDGE + 200.0
 const RIVER_W := 22.0
-const OUT_X := EDGE + 360.0
+var EDGE: float = 0.0              # mép đông thành phố
+var RIVER_X: float = 0.0
+var OUT_X: float = 0.0
 
 
 func _rural_road(a: Vector3, b: Vector3, hw: float = 4.0, skip: Array = []) -> void:
@@ -171,11 +283,13 @@ func _rural_road(a: Vector3, b: Vector3, hw: float = 4.0, skip: Array = []) -> v
 
 
 func _outskirts() -> void:
-	MeshBatch.mat("bund_road", Color(0.48, 0.44, 0.32), 1.0)
+	EDGE = EX
+	RIVER_X = EDGE + 200.0
+	OUT_X = EDGE + 360.0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 909
-	var z1 := B
-	var z2 := 2.0 * B
+	var z1: float = zs[1]
+	var z2: float = zs[2]
 	var gap := Vector2(RIVER_X - RIVER_W * 0.5 - 13.0 - EDGE, RIVER_X + RIVER_W * 0.5 + 13.0 - EDGE)
 	# 2 đường ngang ra ngoại ô + đường dọc nối 2 đầu
 	_rural_road(Vector3(EDGE + RW, 0, z1), Vector3(OUT_X, 0, z1), 4.0, [gap - Vector2(RW, RW)])
@@ -185,18 +299,19 @@ func _outskirts() -> void:
 	_rural_road(Vector3(OUT_X, 0, z1 + 4.0), Vector3(OUT_X, 0, z2 - 4.0), 4.0)
 	# lối vào ngã tư phía đông (vạch dừng, vạch người đi bộ, đèn)
 	for j in [1, 2]:
-		_east_approach(3, j)
+		_east_approach(N - 1, j)
 	# sông + cầu
 	var sc := Node3D.new()
 	add_child(sc)
 	var sbatch := MeshBatch.new()
-	Scenery.river(sc, sbatch, Vector3(RIVER_X, 0, -60), Vector3(RIVER_X, 0, EDGE + 60), RIVER_W,
+	sbatch.chunk = 160.0
+	Scenery.river(sc, sbatch, Vector3(RIVER_X, 0, -60), Vector3(RIVER_X, 0, EZ + 60), RIVER_W,
 		[Vector2(z1 + 60 - 7.0, z1 + 60 + 7.0), Vector2(z2 + 60 - 7.0, z2 + 60 + 7.0)])
 	Scenery.bridge(sc, sbatch, Vector3(RIVER_X, 0, z1), Vector3(1, 0, 0), RIVER_W + 6.0, 4.2)
 	Scenery.bridge(sc, sbatch, Vector3(RIVER_X, 0, z2), Vector3(1, 0, 0), RIVER_W + 6.0, 4.2)
 	# hàng tre dọc bờ sông, làng mái ngói, cột điện, cây ven đường
 	Scenery.bamboo_row(sbatch, Vector3(RIVER_X - 18, 0, -40), Vector3(RIVER_X - 18, 0, z1 - 14), 6.0, 3)
-	Scenery.bamboo_row(sbatch, Vector3(RIVER_X + 18, 0, z2 + 14), Vector3(RIVER_X + 18, 0, EDGE + 50), 6.0, 4)
+	Scenery.bamboo_row(sbatch, Vector3(RIVER_X + 18, 0, z2 + 14), Vector3(RIVER_X + 18, 0, EZ + 50), 6.0, 4)
 	Scenery.village(sbatch, Vector3(RIVER_X + 90, 0, z1 - 20), 4, Vector3(0, 0, 1), 11)
 	Scenery.village(sbatch, Vector3(RIVER_X - 100, 0, z2 + 22), 3, Vector3(0, 0, -1), 12)
 	Scenery.village(sbatch, Vector3(RIVER_X + 90, 0, z2 + 24), 3, Vector3(0, 0, -1), 13)
@@ -209,13 +324,17 @@ func _outskirts() -> void:
 		x += rng.randf_range(16.0, 26.0)
 	sbatch.commit(sc)
 	# đồng lúa, núi, mây quanh cả thành phố và ngoại ô
-	var excl := [Rect2(-40, -40, EDGE + 80, EDGE + 80), Rect2(EDGE, z1 - 9, OUT_X - EDGE + 10, 18), Rect2(EDGE, z2 - 9, OUT_X - EDGE + 10, 18),
-		Rect2(OUT_X - 9, z1 - 9, 18, z2 - z1 + 18), Rect2(RIVER_X - 20, -400, 40, 1000),
+	var inner := Rect2(-40, -40, EX + 80, EZ + 80)
+	var excl := [inner, Rect2(EDGE, z1 - 9, OUT_X - EDGE + 10, 18), Rect2(EDGE, z2 - 9, OUT_X - EDGE + 10, 18),
+		Rect2(OUT_X - 9, z1 - 9, 18, z2 - z1 + 18), Rect2(RIVER_X - 20, -400, 40, EZ + 800),
 		Rect2(RIVER_X + 50, z1 - 34, 90, 26), Rect2(RIVER_X - 130, z2 + 8, 70, 26), Rect2(RIVER_X + 50, z2 + 10, 80, 26)]
-	Scenery.surround(self, Vector3(EDGE * 0.5 + 210, 0, EDGE * 0.5), Rect2(-40, -40, EDGE + 80, EDGE + 80), 470.0, night, Scenery.cur_rain, 21, excl)
+	var rr := maxf(EX + 600.0, EZ + 420.0) * 0.5
+	Scenery.surround(self, Vector3(EX * 0.5 + 210, 0, EZ * 0.5), inner, rr, night, Scenery.cur_rain, 21, excl)
 
 
 func _east_approach(i: int, j: int) -> void:
+	if not lights.has(Vector2i(i, j)):
+		return
 	var p := node_pos(i, j)
 	var d := Vector3(1, 0, 0)
 	var r := right_of(d)
@@ -231,7 +350,7 @@ func _east_approach(i: int, j: int) -> void:
 		TrafficLight.build(batch, self, p - d * (RW + 2.0) - r * (RW + 0.9), d, mats[1], 2.6)
 
 
-func _road(a: Vector3, b: Vector3) -> void:
+func _road(a: Vector3, b: Vector3, urban: bool = true, rseed: int = 0) -> void:
 	var d := (b - a).normalized()
 	var r := right_of(d)
 	var s := a + d * RW
@@ -245,6 +364,9 @@ func _road(a: Vector3, b: Vector3) -> void:
 		var seg := 3.0 if not solid else 2.0
 		batch.strip("c_yline" if solid else "c_line", s + d * u, s + d * minf(u + seg, length), 0.15, 0.012, 0.02)
 		u += seg if solid else 7.0
+	if not urban:
+		_country_edge(s, e, d, r, length, rseed)
+		return
 	# vạch làn đỗ xe
 	for side: float in [-1.0, 1.0]:
 		var off := r * (LANE * 2.0 + 0.1) * side
@@ -268,6 +390,27 @@ func _road(a: Vector3, b: Vector3) -> void:
 				batch.cyl("c_lamp_pole", tp + Vector3(0, 3.2, 0), 0.07, 6.4)
 				batch.box("c_lamp", tp + Vector3(0, 6.4, 0) - r * side * 0.9, Vector3(0.5, 0.15, 0.3), atan2(d.x, d.z))
 			k += 10.0
+
+
+## Đường ngoài phố: lề đất hai bên, cây mọc thưa tự nhiên (không vỉa hè, không đèn đường)
+func _country_edge(s: Vector3, e: Vector3, d: Vector3, r: Vector3, length: float, rseed: int) -> void:
+	for side: float in [-1.0, 1.0]:
+		batch.strip("bund_road", s + r * (RW + 0.8) * side, e + r * (RW + 0.8) * side, 1.6, -0.01, 0.03)
+		batch.strip("c_line", s + r * (RW - 0.3) * side, e + r * (RW - 0.3) * side, 0.15, 0.012, 0.02)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5000 + rseed
+	for side: float in [-1.0, 1.0]:
+		var k := rng.randf_range(10.0, 22.0)
+		while k < length - 10.0:
+			var tp := s + d * k + r * (RW + rng.randf_range(2.5, 9.0)) * side
+			if Scenery.theme == "tea" and rng.randf() < 0.5:
+				Scenery.pine(batch, tp, rng.randf_range(0.9, 1.4))
+			else:
+				Scenery.tree(batch, tp, rng.randf_range(0.8, 1.3))
+			k += rng.randf_range(14.0, 34.0)
+	# thỉnh thoảng có hàng cột điện chạy dọc đường
+	if rseed % 3 == 0:
+		Scenery.power_line(batch, s + r * (RW + 4.5), e + r * (RW + 4.5), 40.0)
 
 
 func _intersection(i: int, j: int) -> void:
@@ -335,7 +478,24 @@ func light_for(n: Vector2i, move_dir: Vector3) -> String:
 
 
 func nearest_node(p: Vector3) -> Vector2i:
-	return Vector2i(clampi(roundi(p.x / B), 0, N - 1), clampi(roundi(p.z / B), 0, N - 1))
+	var bi := 0
+	var bj := 0
+	for i in N:
+		if absf(float(xs[i]) - p.x) < absf(float(xs[bi]) - p.x):
+			bi = i
+		if absf(float(zs[i]) - p.z) < absf(float(zs[bj]) - p.z):
+			bj = i
+	return Vector2i(bi, bj)
+
+
+## Số xe AI nên có: ngoài phố vắng hơn
+func traffic_for(count: int) -> int:
+	var n := 0
+	for v in lit.values():
+		if v:
+			n += 1
+	var f := 0.55 + 0.45 * float(n) / float(N * N)
+	return maxi(4, roundi(float(count) * f))
 
 
 # ------------------------------------------------------------------ xe AI

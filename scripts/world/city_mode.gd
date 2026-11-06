@@ -202,9 +202,8 @@ func _physics_process(delta: float) -> void:
 			Sfx.play("chime", -6.0)
 			if mission_id >= 0:
 				_violate("v_belt", 60.0)
-	var B := City.B
-	var gx := p.x - roundf(p.x / B) * B
-	var gz := p.z - roundf(p.z / B) * B
+	var gx := p.x - city.snap_x(p.x)
+	var gz := p.z - city.snap_z(p.z)
 	var on_ns := absf(gx) < City.RW
 	var on_ew := absf(gz) < City.RW
 	var n := city.nearest_node(p)
@@ -212,7 +211,7 @@ func _physics_process(delta: float) -> void:
 	# đi sai làn
 	var wrong := false
 	if on_ns != on_ew:
-		var center := Vector3(roundf(p.x / B) * B, 0, p.z) if on_ns else Vector3(p.x, 0, roundf(p.z / B) * B)
+		var center := Vector3(city.snap_x(p.x), 0, p.z) if on_ns else Vector3(p.x, 0, city.snap_z(p.z))
 		var axis_ok := absf(h.z) > 0.75 if on_ns else absf(h.x) > 0.75
 		if axis_ok and car.speed_kmh > 5.0:
 			var lat := (p - center).dot(City.right_of(h))

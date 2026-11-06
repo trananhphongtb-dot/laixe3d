@@ -81,7 +81,7 @@ func _new_leg(n: Vector2i, d: Vector3) -> void:
 	turning = d2.dot(d1) < 0.5
 	pts = PackedVector3Array()
 	var p0 := city.lane_point(n, d, City.STOP_D)
-	var p1 := city.lane_point(n, d, City.B - City.STOP_D)
+	var p1 := city.lane_point(n, d, city.edge_len(n, d) - City.STOP_D)
 	pts.append(p0)
 	pts.append(p1)
 	var tn := city.node_pos(to_n.x, to_n.y)
