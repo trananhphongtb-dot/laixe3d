@@ -479,7 +479,7 @@ func _page_exam() -> void:
 	_header(Game.t("menu_exam"))
 	content.add_child(_card("play", Game.t("exam_full"), Game.t("msub_exam_full"), func(): Game.start_drive("exam"), 92))
 	content.add_child(UiTheme.label(Game.t("practice_title"), 27, Color(0.8, 0.85, 0.95)))
-	for i in range(1, 12):
+	for i in range(1, 6):
 		var n := i
 		var done: bool = Game.lessons_done.has(i)
 		var c := _card("check" if done else "flag", "%d. %s" % [i, Game.t("lesson_%d" % i)], Game.t("passed") if done else "", func():
@@ -491,8 +491,8 @@ func _page_exam() -> void:
 func _page_lessons() -> void:
 	_header(Game.t("menu_lessons"))
 	content.add_child(UiTheme.label(Game.t("lessons_desc"), 24, Color(0.8, 0.85, 0.95)))
-	var icons := ["flag", "road", "back", "car", "flag"]
-	for i in range(1, 6):
+	var icons := ["flag", "road", "back", "car", "flag", "road", "car", "car", "road", "flag", "road"]
+	for i in range(1, 12):
 		var n := i
 		var done: bool = Game.lessons_learned.has(i)
 		var c := _card("check" if done else icons[i - 1], "%d. %s" % [i, Game.t("lesson_l%d" % i)], Game.t("lesson_l%d_sub" % i), func():

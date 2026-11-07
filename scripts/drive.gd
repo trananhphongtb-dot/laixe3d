@@ -120,7 +120,7 @@ func _ready() -> void:
 		city_mode.setup(city, car, hud, Game.mission_id if m == "mission" else -1)
 		city_mode.mission_finished.connect(_on_mission_finished)
 		var g: int = Game.settings.get("graphics", 1)
-		city.spawn_traffic(city.traffic_for([8, 12, 16][g]))
+		city.spawn_traffic(city.traffic_for([14, 20, 26][g]))
 		if night:
 			car.set_lights(true)
 		if m == "free":
@@ -344,7 +344,7 @@ func _on_lesson_finished() -> void:
 			Game.start_drive("lesson")])
 	else:
 		buttons.append([Game.t("ls_again"), func(): Game.start_drive("lesson")])
-	if Game.lesson_id < 5:
+	if Game.lesson_id < 11:
 		buttons.append([Game.t("next_lesson"), func():
 			Game.lesson_id += 1
 			Game.lesson_guided = true

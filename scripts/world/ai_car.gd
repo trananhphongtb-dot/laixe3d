@@ -15,31 +15,50 @@ var speed: float = 0.0
 var cruise: float = 10.0
 var turning: bool = false
 var length: float = 4.4
+var kind: String = "car"       # car | moto | bike | truck
+var lat: float = 0.0           # lệch ngang so với tim làn (xe máy/xe đạp đi sát lề phải)
 var _stuck: float = 0.0
 var _ghost: float = 0.0
 var _snd: AudioStreamPlayer3D
 var _rng := RandomNumberGenerator.new()
 
 
-func setup(p_city: City, spec: Dictionary, color: Color, n: Vector2i, d: Vector3, start_frac: float) -> void:
+func setup(p_city: City, spec: Dictionary, color: Color, n: Vector2i, d: Vector3, start_frac: float, p_kind: String = "car") -> void:
 	city = p_city
 	_rng.randomize()
+	kind = p_kind
 	cruise = _rng.randf_range(8.5, 12.0)
 	length = spec["len"]
 	sync_to_physics = true
-	var r := CarModel.build_simple(spec, color)
-	add_child(r["exterior"])
-	if city.night:
-		var hm: StandardMaterial3D = r["head_mat"]
-		hm.emission_energy_multiplier = 3.0
-		var tm: StandardMaterial3D = r["tail_mat"]
-		tm.emission_energy_multiplier = 1.2
-	var dm: Dictionary = r["dims"]
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(float(dm["W"]), float(dm["H"]) - 0.25, float(dm["L"]))
+	if kind == "car":
+		var r := CarModel.build_simple(spec, color)
+		add_child(r["exterior"])
+		if city.night:
+			var hm: StandardMaterial3D = r["head_mat"]
+			hm.emission_energy_multiplier = 3.0
+			var tm: StandardMaterial3D = r["tail_mat"]
+			tm.emission_energy_multiplier = 1.2
+		var dm: Dictionary = r["dims"]
+		bs.size = Vector3(float(dm["W"]), float(dm["H"]) - 0.25, float(dm["L"]))
+		cs.position = Vector3(0, 0.25 + (float(dm["H"]) - 0.25) * 0.5, 0)
+	else:
+		var vm := VehicleModels.build(kind, color, _rng)
+		add_child(vm["node"])
+		length = float(vm["L"])
+		bs.size = Vector3(float(vm["W"]), float(vm["H"]), float(vm["L"]))
+		cs.position = Vector3(0, float(vm["H"]) * 0.5, 0)
+		match kind:
+			"moto":
+				cruise = _rng.randf_range(7.5, 10.5)
+				lat = 1.0
+			"bike":
+				cruise = _rng.randf_range(3.8, 5.2)
+				lat = 1.2
+			"truck":
+				cruise = _rng.randf_range(6.5, 9.0)
 	cs.shape = bs
-	cs.position = Vector3(0, 0.25 + (float(dm["H"]) - 0.25) * 0.5, 0)
 	add_child(cs)
 	if city.ai_cars.size() < 6:
 		_snd = Sfx.make_loop_player_3d("engine_ai")
@@ -121,7 +140,7 @@ func _apply_pose() -> void:
 	var p: Vector3 = r[0]
 	var dir: Vector3 = r[1]
 	var yaw := atan2(dir.x, dir.z)
-	global_transform = Transform3D(Basis(Vector3.UP, yaw), p)
+	global_transform = Transform3D(Basis(Vector3.UP, yaw), p + City.right_of(dir) * lat)
 
 
 func _physics_process(delta: float) -> void:

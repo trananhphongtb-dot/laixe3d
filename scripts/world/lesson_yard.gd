@@ -10,6 +10,7 @@ var lesson: int = 1
 var batch := MeshBatch.new()
 var spawn_xf: Transform3D
 var geo: Dictionary = {}
+var lead: LeadCar               # bài 7, 8: xe chạy phía trước
 var instances: Array = []     # các tình huống lặp lại (vạch dừng, ngã tư, ô đỗ, cầu)
 var _sb: StaticBody3D
 
@@ -27,6 +28,11 @@ func _ready() -> void:
 	MeshBatch.mat("curb_r", Color(0.8, 0.15, 0.12), 0.8)
 	MeshBatch.mat("wall", Color(0.85, 0.83, 0.78), 0.9)
 	MeshBatch.mat("rail", Color(0.85, 0.85, 0.82), 0.6)
+	MeshBatch.mat("y_pole", Color(0.45, 0.46, 0.5), 0.6)
+	MeshBatch.mat("y_sign_red", Color(0.85, 0.08, 0.08), 0.5)
+	MeshBatch.mat("y_sign_white", Color(0.97, 0.97, 0.97), 0.5)
+	MeshBatch.mat("y_sign_blue", Color(0.1, 0.35, 0.8), 0.5)
+	MeshBatch.mat("y_sign_yel", Color(0.98, 0.8, 0.1), 0.5)
 	_sb = StaticBody3D.new()
 	add_child(_sb)
 	var area := Rect2()
@@ -41,6 +47,18 @@ func _ready() -> void:
 			area = _build_garage()
 		5:
 			area = _build_hill()
+		6:
+			area = _build_light()
+		7:
+			area = _build_pass()
+		8:
+			area = _build_brake()
+		9:
+			area = _build_cross()
+		10:
+			area = _build_rail()
+		11:
+			area = _build_zone()
 	Scenery.texturize("asph", 0.35, 0.3, 0.25)
 	batch.commit(self)
 	var c := Vector3(area.get_center().x, 0, area.get_center().y)
@@ -144,6 +162,170 @@ func _build_stop() -> Rect2:
 		_arrow(Vector3(LANE_X, 0, z - 30), Vector3(0, 0, 1))
 		instances.append({"line_z": z})
 		z += 120.0
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+# ------------------------------------------------------------------ 6. đèn đỏ: cột đèn + vạch dừng lặp lại
+func _build_light() -> Rect2:
+	var z_end := 1240.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var z := 130.0
+	while z < z_end - 40:
+		batch.strip("line", Vector3(0, 0, z + 0.15), Vector3(-HW, 0, z + 0.15), 0.4, 0.014, 0.02)
+		for k in 9:
+			var zp := Vector3(-HW + 0.4 + k * 0.78, 0, z + 3.2)
+			batch.strip("line", zp - Vector3(0, 0, 1.0), zp + Vector3(0, 0, 1.0), 0.4, 0.014, 0.02)
+		var mats := TrafficLight.make_mats()
+		TrafficLight.set_state(mats, "G")
+		TrafficLight.build(batch, self, Vector3(-HW - 0.9, 0, z + 0.6), Vector3(0, 0, -1), mats, 4.0)
+		_arrow(Vector3(LANE_X, 0, z - 30), Vector3(0, 0, 1))
+		instances.append({"line_z": z, "mats": mats, "state": "G"})
+		z += 130.0
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+# ------------------------------------------------------------------ 7. vượt xe: xe chậm chạy phía trước
+func _build_pass() -> Rect2:
+	var z_end := 1100.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var k := 60.0
+	while k < z_end - 60:
+		_arrow(Vector3(LANE_X, 0, k), Vector3(0, 0, 1))
+		k += 60.0
+	instances.append({"line_z": 0.0})
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	lead = LeadCar.new()
+	lead.setup(Color(0.95, 0.75, 0.1))
+	lead.end_z = z_end - 40.0
+	lead.position = Vector3(LANE_X, 0.0, 80.0)
+	add_child(lead)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+# ------------------------------------------------------------------ 8. phanh khẩn cấp: xe trước phanh gấp
+func _build_brake() -> Rect2:
+	var z_end := 1100.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var k := 60.0
+	while k < z_end - 60:
+		_arrow(Vector3(LANE_X, 0, k), Vector3(0, 0, 1))
+		k += 60.0
+	instances.append({"line_z": 0.0})
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	lead = LeadCar.new()
+	lead.setup(Color(0.85, 0.15, 0.15), 9.0)
+	lead.end_z = z_end - 40.0
+	lead.position = Vector3(LANE_X, 0.0, 70.0)
+	add_child(lead)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+func _pole(x: float, z: float, h: float = 2.6) -> void:
+	batch.cyl("y_pole", Vector3(x, h * 0.5, z), 0.05, h)
+
+
+## Biển tròn giới hạn tốc độ, quay mặt về phía -Z (người đi theo +Z nhìn thấy)
+func _speed_sign(pos: Vector3, limit: int) -> void:
+	_pole(pos.x, pos.z)
+	batch.box("y_sign_red", pos + Vector3(0, 2.7, 0), Vector3(0.9, 0.9, 0.05))
+	batch.box("y_sign_white", pos + Vector3(0, 2.7, -0.03), Vector3(0.64, 0.64, 0.05))
+	var lb := Label3D.new()
+	lb.text = str(limit)
+	lb.font_size = 96
+	lb.pixel_size = 0.0068
+	lb.modulate = Color(0.05, 0.05, 0.06)
+	lb.outline_size = 0
+	lb.shaded = false
+	lb.position = pos + Vector3(0, 2.7, -0.065)
+	lb.rotation.y = PI
+	add_child(lb)
+
+
+# ------------------------------------------------------------------ 9. nhường người đi bộ: vạch đi bộ lặp lại
+func _build_cross() -> Rect2:
+	var z_end := 1240.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var shirts := [Color(0.9, 0.3, 0.25), Color(0.25, 0.55, 0.9), Color(0.95, 0.75, 0.2), Color(0.35, 0.75, 0.4)]
+	var z := 130.0
+	var n := 0
+	while z < z_end - 40:
+		batch.strip("line", Vector3(0, 0, z + 0.15), Vector3(-HW, 0, z + 0.15), 0.4, 0.014, 0.02)
+		var xx := -HW + 0.5
+		while xx < HW - 0.2:
+			batch.strip("line", Vector3(xx, 0, z + 1.2), Vector3(xx, 0, z + 5.0), 0.5, 0.014, 0.02)
+			xx += 1.0
+		# biển báo "có người đi bộ" hai bên
+		for sx in [-1.0, 1.0]:
+			var px: float = sx * (HW + 1.1)
+			_pole(px, z - 1.0, 2.4)
+			batch.box("y_sign_blue", Vector3(px, 2.55, z - 1.0), Vector3(0.75, 0.75, 0.05))
+			batch.box("y_sign_white", Vector3(px, 2.55, z - 1.03), Vector3(0.28, 0.5, 0.05))
+		_arrow(Vector3(LANE_X, 0, z - 30), Vector3(0, 0, 1))
+		var ped := Pedestrian.new()
+		ped.setup(HW + 1.5, -HW - 1.5, HW, shirts[n % shirts.size()])
+		ped.position = Vector3(HW + 1.5, 0.0, z + 3.1)
+		add_child(ped)
+		instances.append({"line_z": z, "ped": ped})
+		z += 130.0
+		n += 1
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+# ------------------------------------------------------------------ 10. đường sắt: đèn, chuông, barie, tàu
+func _build_rail() -> Rect2:
+	var z_end := 1240.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var z := 140.0
+	while z < z_end - 40:
+		batch.strip("line", Vector3(0, 0, z + 0.15), Vector3(-HW, 0, z + 0.15), 0.4, 0.014, 0.02)
+		# báo hiệu trước đường sắt: vạch vàng chữ X
+		batch.strip("yline", Vector3(-HW + 0.4, 0, z - 14), Vector3(-0.4, 0, z - 8), 0.3, 0.014, 0.02)
+		batch.strip("yline", Vector3(-0.4, 0, z - 14), Vector3(-HW + 0.4, 0, z - 8), 0.3, 0.014, 0.02)
+		_label("RAIL", Vector3(LANE_X, 0, z - 20), PI, 64, Color(0.98, 0.8, 0.1))
+		var rc := RailCrossing.new()
+		rc.position = Vector3(0, 0, z + 3.0)
+		add_child(rc)
+		rc.build(HW)
+		_arrow(Vector3(LANE_X, 0, z - 40), Vector3(0, 0, 1))
+		instances.append({"line_z": z, "rc": rc})
+		z += 140.0
+	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
+	return Rect2(-30, -50, 60, z_end + 80)
+
+
+# ------------------------------------------------------------------ 11. khu vực hạn chế tốc độ 30 km/h (trường học)
+func _build_zone() -> Rect2:
+	var z_end := 1240.0
+	_road(Vector3(0, 0, -20), Vector3(0, 0, z_end))
+	_turnaround(Vector3(0, 0, -26))
+	_turnaround(Vector3(0, 0, z_end + 6))
+	var z := 150.0
+	while z < z_end - 150:
+		var ze := z + 110.0
+		_speed_sign(Vector3(-HW - 1.2, 0, z), 30)
+		_speed_sign(Vector3(HW + 1.2, 0, ze), 50)
+		batch.strip("line", Vector3(0, 0, z + 0.15), Vector3(-HW, 0, z + 0.15), 0.4, 0.014, 0.02)
+		batch.strip("line", Vector3(0, 0, ze + 0.15), Vector3(-HW, 0, ze + 0.15), 0.4, 0.014, 0.02)
+		_label("30", Vector3(LANE_X, 0, z + 6.0), PI, 110, Color.WHITE)
+		_label("SCHOOL", Vector3(LANE_X, 0, z + 12.0), PI, 64, Color(0.98, 0.8, 0.1))
+		for w in [14.0, 22.0, 30.0]:
+			batch.strip("yline", Vector3(-0.3, 0, z - w), Vector3(-HW + 0.3, 0, z - w), 0.14, 0.014, 0.02)
+		_arrow(Vector3(LANE_X, 0, z - 40), Vector3(0, 0, 1))
+		instances.append({"zs": z, "ze": ze, "line_z": z})
+		z += 260.0
 	spawn_xf = _yaw_xf(Vector3(LANE_X, 0, 0), 0.0)
 	return Rect2(-30, -50, 60, z_end + 80)
 

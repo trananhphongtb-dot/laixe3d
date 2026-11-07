@@ -67,6 +67,18 @@ func setup(p_hud: Hud, p_car: PlayerCar, p_yard: LessonYard) -> void:
 			_steps_garage()
 		5:
 			_steps_hill()
+		6:
+			_steps_light()
+		7:
+			_steps_pass()
+		8:
+			_steps_brake()
+		9:
+			_steps_cross()
+		10:
+			_steps_rail()
+		11:
+			_steps_zone()
 	steps.append({"k": "ls_done", "tap": true})
 	_expand_steps()
 	_build_card()
@@ -447,9 +459,12 @@ func _in_bay() -> bool:
 	var bay: Array = _cur()["bay"]
 	for p in car.corner_points():
 		var lp: Vector2 = (p as Vector2) - (bay[0] as Vector2)
-		if absf(lp.x) > float(bay[2]) + 0.1 or absf(lp.y) > float(bay[3]) + 0.1:
+		if absf(lp.x) > float(bay[2]) + 0.05 or absf(lp.y) > float(bay[3]) + 0.05:
 			return false
-	return true
+	# xe phải nằm đúng chuồng đang tập (không phải chuồng bên cạnh) và không được nằm chéo
+	if absf(car.global_position.z - _cz("bay_z")) > float(bay[3]):
+		return false
+	return absf(_bay_yaw()) < deg_to_rad(7.0)
 
 
 func _steps_garage() -> void:
@@ -503,6 +518,321 @@ func _tick_in_bay(_dt: float) -> String:
 	if _stopped() and not _in_bay():
 		_warn("lw_not_in_bay", 3.0)
 	return _too_fast(6.0)
+
+
+# ================================================================== bài 6: dừng đèn đỏ, chờ đèn xanh
+func _set_light(state: String) -> void:
+	var d := _cur()
+	TrafficLight.set_state(d["mats"], state)
+	d["state"] = state
+
+
+func _light_state() -> String:
+	return String(_cur().get("state", "G"))
+
+
+func _steps_light() -> void:
+	steps = [
+		{"k": "l6_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		_speed_step("l6_go", 20.0, 30.0, 3.0, func(): return _fz() > _cz("line_z") - 55.0),
+		{"k": "l6_stop", "id": "stop", "t": hud.brake_p,
+			"enter": func():
+				if _fz() > _cz("line_z") - 70.0:
+					_next_inst("line_z", 80.0)
+				_set_light("G")
+				st["y_t"] = 0.0,
+			"ok": func(): return _stopped() and _light_state() == "R" and _cz("line_z") - _fz() >= -0.05 and _cz("line_z") - _fz() <= 1.5,
+			"tick": _tick_light_stop,
+			"judge": func(): return Game.tf("l6_stop_good", [_cm(_cz("line_z") - _fz())])},
+		{"k": "l6_wait", "t": hud.brake_p, "ok": func(): return _light_state() == "G",
+			"tick": _tick_light_wait,
+			"judge": func(): return Game.t("l6_wait_good")},
+		{"k": "l6_go2", "t": hud.gas, "ok": func(): return _fz() > _cz("line_z") + 8.0 and _v() > 8.0,
+			"tick": func(_dt: float) -> String: return _too_fast(35.0),
+			"judge": func(): return Game.t("l6_go2_good")},
+		_park_step(),
+	]
+
+
+func _tick_light_stop(dt: float) -> String:
+	var d := _cz("line_z") - _fz()
+	var state := _light_state()
+	if state == "G" and d < 60.0:
+		_set_light("Y")
+		st["y_t"] = 0.0
+		hud.toast(Game.t("l6_yellow"), Color(1.0, 0.8, 0.2), 3.0)
+	elif state == "Y":
+		st["y_t"] = float(st.get("y_t", 0.0)) + dt
+		if float(st["y_t"]) > 2.5:
+			_set_light("R")
+	if d < -0.05 and _light_state() != "G":
+		return "@redo_next:stop:" + Game.tf("lf_ran_red", [_cm(d)])
+	if _stopped() and d > 1.5 and _light_state() == "R":
+		_warn("lw_not_yet", 3.0)
+	return ""
+
+
+func _tick_light_wait(dt: float) -> String:
+	var d := _cz("line_z") - _fz()
+	if _light_state() == "R":
+		if _v() < 1.0:
+			st["w"] = float(st.get("w", 0.0)) + dt
+			if float(st["w"]) >= 4.0:
+				_set_light("G")
+				Sfx.play("ding", -3.0)
+		if d < -0.05:
+			return "@redo_next:stop:" + Game.tf("lf_ran_red", [_cm(d)])
+	return ""
+
+
+# ================================================================== bài 7: vượt xe an toàn
+func _lead_gap() -> float:
+	var l: LeadCar = yard.lead
+	return (l.global_position.z - l.length * 0.5) - _fz()
+
+
+func _past_gap() -> float:
+	var l: LeadCar = yard.lead
+	return car.rear_point().z - (l.global_position.z + l.length * 0.5)
+
+
+func _steps_pass() -> void:
+	steps = [
+		{"k": "l7_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		{"k": "l7_follow", "t": hud.gas, "tick": _tick_follow,
+			"ok": func(): return float(st.get("t_in", 0.0)) >= 2.5,
+			"judge": func(): return Game.t("l7_follow_good")},
+		{"k": "l7_signal", "t": hud.b_blink_l, "ok": func(): return car.blinker == -1,
+			"tick": func(_dt: float) -> String:
+				if _lead_gap() < 3.5:
+					return Game.tf("lf_too_close", [int(maxf(_lead_gap(), 0.0))])
+				return _too_fast(45.0),
+			"judge": func(): return Game.t("l7_signal_good")},
+		{"k": "l7_pass", "t": hud.steer, "tick": _tick_pass,
+			"ok": func(): return _past_gap() > 2.0,
+			"judge": func(): return Game.t("l7_pass_good")},
+		{"k": "l7_back", "t": hud.b_blink_r, "tick": _tick_back,
+			"ok": func(): return absf(car.global_position.x - LessonYard.LANE_X) < 0.8 and _past_gap() > 7.0 and st.get("sig", false),
+			"judge": func(): return Game.t("l7_back_good")},
+		_park_step(),
+	]
+
+
+func _tick_follow(dt: float) -> String:
+	var gap := _lead_gap()
+	if gap < 6.0:
+		return Game.tf("lf_too_close", [int(maxf(gap, 0.0))])
+	if gap >= 12.0 and gap <= 30.0:
+		st["t_in"] = float(st.get("t_in", 0.0)) + dt
+	else:
+		st["t_in"] = 0.0
+	return _too_fast(45.0)
+
+
+func _tick_pass(_dt: float) -> String:
+	var gap := _lead_gap()
+	var x := car.global_position.x
+	if gap < 3.0 and gap > -1.0 and x < LessonYard.LANE_X + 1.0:
+		return Game.t("lf_not_moved_left")
+	if x > LessonYard.HW - 0.2:
+		return Game.t("lf_off_left")
+	return _too_fast(50.0)
+
+
+func _tick_back(_dt: float) -> String:
+	if car.blinker == 1:
+		st["sig"] = true
+	var x := car.global_position.x
+	var past := _past_gap()
+	if past < 5.0 and x < LessonYard.LANE_X + 1.0 and _lead_gap() < 0.0:
+		return Game.t("lf_cut_in")
+	if absf(x - LessonYard.LANE_X) < 0.8 and past > 7.0 and not st.get("sig", false):
+		return Game.t("lf_no_signal_back")
+	return _too_fast(50.0)
+
+
+# ================================================================== bài 8: phanh khẩn cấp, giữ khoảng cách
+func _steps_brake() -> void:
+	steps = [
+		{"k": "l8_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		{"k": "l8_follow", "t": hud.gas, "tick": _tick_follow,
+			"ok": func(): return float(st.get("t_in", 0.0)) >= 3.0,
+			"judge": func(): return Game.t("l7_follow_good")},
+		{"k": "l8_brake", "t": hud.brake_p,
+			"enter": func(): yard.lead.brake_in(1.5, 7.0),
+			"tick": _tick_brake,
+			"ok": func(): return _stopped() and yard.lead.speed < 0.1 and _lead_gap() >= 1.5,
+			"judge": func(): return Game.tf("l8_brake_good", [_cm(_lead_gap())])},
+		_park_step(),
+	]
+
+
+func _tick_brake(_dt: float) -> String:
+	var l: LeadCar = yard.lead
+	var gap := _lead_gap()
+	if l.braking and not st.get("alert", false):
+		st["alert"] = true
+		hud.toast(Game.t("l8_alert"), Color(1.0, 0.35, 0.25), 3.0)
+		Sfx.play("tock", -2.0)
+	if gap < 1.2:
+		return Game.tf("lf_rear_end", [_cm(gap)])
+	if not l.braking and l.brake_after <= 0.0 and l.speed > 3.0 and st.get("alert", false):
+		return Game.t("lf_brake_late")
+	return ""
+
+
+# ================================================================== bài 9: nhường người đi bộ
+func _ped() -> Pedestrian:
+	return _cur()["ped"] as Pedestrian
+
+
+func _steps_cross() -> void:
+	steps = [
+		{"k": "l9_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		_speed_step("l9_go", 20.0, 30.0, 3.0, func(): return _fz() > _cz("line_z") - 55.0),
+		{"k": "l9_stop", "id": "stop", "t": hud.brake_p,
+			"enter": func():
+				if _fz() > _cz("line_z") - 60.0:
+					_next_inst("line_z", 70.0)
+				_ped().reset(),
+			"tick": _tick_cross_stop,
+			"ok": func():
+				var d := _cz("line_z") - _fz()
+				if _ped().state == "done" and d < 8.0:
+					return true
+				return _stopped() and _ped().on_road() and d >= -0.05 and d <= 3.5,
+			"judge": func(): return Game.tf("l9_stop_good", [_cm(_cz("line_z") - _fz())])},
+		{"k": "l9_wait", "t": hud.brake_p, "ok": func(): return _ped().state == "done",
+			"tick": _tick_cross_wait,
+			"judge": func(): return Game.t("l9_wait_good")},
+		{"k": "l9_go2", "t": hud.gas, "ok": func(): return _fz() > _cz("line_z") + 10.0 and _v() > 5.0,
+			"tick": func(_dt: float) -> String: return _too_fast(30.0),
+			"judge": func(): return Game.t("l9_go2_good")},
+		_park_step(),
+	]
+
+
+func _tick_cross_stop(_dt: float) -> String:
+	var d := _cz("line_z") - _fz()
+	var ped := _ped()
+	if d < 26.0:
+		ped.start()
+	if ped.on_road():
+		if d < -0.05:
+			return Game.t("lf_ped_run")
+		if d < 9.0 and _v() > 27.0:
+			return Game.tf("lf_ped_fast", [int(round(_v()))])
+		if _stopped() and d > 3.5:
+			_warn("lw_not_yet", 3.0)
+	return ""
+
+
+func _tick_cross_wait(_dt: float) -> String:
+	if _cz("line_z") - _fz() < -0.05 and _ped().on_road():
+		return Game.t("lf_ped_run")
+	return ""
+
+
+# ================================================================== bài 10: đường sắt (đèn đỏ nhấp nháy, barie, tàu)
+func _rc() -> RailCrossing:
+	return _cur()["rc"] as RailCrossing
+
+
+func _steps_rail() -> void:
+	steps = [
+		{"k": "l10_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		_speed_step("l10_go", 20.0, 30.0, 3.0, func(): return _fz() > _cz("line_z") - 60.0),
+		{"k": "l10_stop", "id": "stop", "t": hud.brake_p,
+			"enter": func():
+				if _fz() > _cz("line_z") - 85.0:
+					_next_inst("line_z", 95.0)
+				_rc().reset(),
+			"tick": _tick_rail_stop,
+			"ok": func():
+				var d := _cz("line_z") - _fz()
+				if _rc().state == "done" and d < 10.0 and _v() < 20.0:
+					return true
+				return _stopped() and _rc().is_closed() and d >= -0.05 and d <= 3.0,
+			"judge": func(): return Game.tf("l10_stop_good", [_cm(_cz("line_z") - _fz())])},
+		{"k": "l10_wait", "t": hud.brake_p, "ok": func(): return _rc().state == "done",
+			"tick": _tick_rail_wait,
+			"judge": func(): return Game.t("l10_wait_good")},
+		{"k": "l10_go2", "t": hud.gas, "ok": func(): return _fz() > _cz("line_z") + 12.0 and _v() > 5.0,
+			"tick": _tick_rail_cross,
+			"judge": func(): return Game.t("l10_go2_good")},
+		_park_step(),
+	]
+
+
+func _tick_rail_stop(_dt: float) -> String:
+	var d := _cz("line_z") - _fz()
+	var rc := _rc()
+	if d < maxf(45.0, car.speed_ms * 5.5) and rc.state == "idle":
+		rc.trigger()
+		hud.toast(Game.t("l10_warn"), Color(1.0, 0.3, 0.25), 3.0)
+	if rc.is_closed():
+		if d < -0.05:
+			return Game.tf("lf_rail_run", [_cm(d)])
+		if _stopped() and d > 3.0:
+			_warn("lw_not_yet", 3.0)
+	elif d < -0.05 and rc.state != "idle":
+		return Game.tf("lf_rail_fast", [int(round(_v()))])
+	return ""
+
+
+func _tick_rail_wait(_dt: float) -> String:
+	if _cz("line_z") - _fz() < -0.05 and _rc().is_closed():
+		return Game.tf("lf_rail_run", [_cm(_cz("line_z") - _fz())])
+	return ""
+
+
+func _tick_rail_cross(_dt: float) -> String:
+	var d := _cz("line_z") - _fz()
+	if d < -0.05 and d > -9.0 and _stopped():
+		return Game.t("lf_on_tracks")
+	return _too_fast(30.0)
+
+
+# ================================================================== bài 11: khu vực hạn chế tốc độ (trường học)
+func _steps_zone() -> void:
+	steps = [
+		{"k": "l11_intro", "tap": true},
+		{"k": "l1_belt", "t": hud.b_belt, "ok": func(): return car.seatbelt},
+		_gear_step("l1_gear", "l1_gear_manual", false, true),
+		_speed_step("l11_go", 40.0, 50.0, 3.0, func(): return _fz() > _cz("zs") - 70.0),
+		{"k": "l11_zone", "id": "zone", "t": hud.brake_p,
+			"enter": func():
+				if _fz() > _cz("zs") - 70.0:
+					_next_inst("zs", 85.0),
+			"tick": _tick_zone,
+			"ok": func(): return _fz() > _cz("ze") + 3.0,
+			"judge": func(): return Game.t("l11_zone_good")},
+		{"k": "l11_after", "t": hud.gas, "ok": func(): return _v() >= 40.0,
+			"judge": func(): return Game.t("l11_after_good")},
+		_park_step(),
+	]
+
+
+func _tick_zone(_dt: float) -> String:
+	var zs := _cz("zs")
+	var ze := _cz("ze")
+	var fz := _fz()
+	if fz < zs:
+		if zs - fz < 75.0 and _v() > 35.0:
+			_warn("l11_sign", 6.0)
+	elif fz >= zs + 3.0 and fz <= ze and _v() > 33.0:
+		return Game.tf("lf_zone_fast", [int(round(_v()))])
+	return ""
 
 
 # ================================================================== bài 5: đề-pa lên cầu (cầu lặp lại)
@@ -733,6 +1063,20 @@ func _snapshot() -> Dictionary:
 	var d := {"xf": car.global_transform, "lv": car.linear_velocity, "av": car.angular_velocity,
 		"mode": car.auto_mode, "gear": car.gear, "blink": car.blinker, "hb": car.handbrake, "belt": car.seatbelt,
 		"gas": hud.gas.value, "gas_l": hud.gas.locked, "brake": hud.brake_p.value, "brake_l": hud.brake_p.locked, "inst": inst}
+	if yard.lead != null:
+		d["lead"] = yard.lead.get_state()
+	var ist: Array = []
+	for it in yard.instances:
+		var di: Dictionary = it
+		if di.has("ped"):
+			ist.append((di["ped"] as Pedestrian).get_state())
+		elif di.has("rc"):
+			ist.append((di["rc"] as RailCrossing).get_state())
+		elif di.has("mats"):
+			ist.append(di["state"])
+		else:
+			ist.append(null)
+	d["ist"] = ist
 	if _holding:
 		d["xf"] = _hold_xf
 		d["lv"] = _hold_vel[0]
@@ -759,6 +1103,21 @@ func _restore(d: Dictionary) -> void:
 	hud.brake_p.set_value(d["brake"])
 	hud.brake_p.locked = d["brake_l"]
 	inst = d["inst"]
+	if d.has("lead") and yard.lead != null:
+		yard.lead.set_state(d["lead"])
+	if d.has("ist"):
+		var ist: Array = d["ist"]
+		for k in mini(ist.size(), yard.instances.size()):
+			var di: Dictionary = yard.instances[k]
+			if ist[k] == null:
+				continue
+			if di.has("ped"):
+				(di["ped"] as Pedestrian).set_state(ist[k])
+			elif di.has("rc"):
+				(di["rc"] as RailCrossing).set_state(ist[k])
+			elif di.has("mats"):
+				di["state"] = ist[k]
+				TrafficLight.set_state(di["mats"], ist[k])
 	_skip_c = Vector3(1e9, 0, 1e9)
 	_stop_t = 0.0
 

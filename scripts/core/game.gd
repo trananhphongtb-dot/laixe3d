@@ -29,6 +29,7 @@ var exam_passes: int = 0
 var exam_tries: int = 0
 var lessons_done: Dictionary = {}
 var missions_done: Dictionary = {}
+var mission_best: Dictionary = {}   # id nhiệm vụ -> thời gian nhanh nhất (giây)
 var rate_asked: bool = false
 var tutorial_done: bool = false
 var lessons_learned: Dictionary = {}
@@ -154,6 +155,7 @@ func save_game() -> void:
 	c.set_value("main", "exam_tries", exam_tries)
 	c.set_value("main", "lessons_done", lessons_done)
 	c.set_value("main", "missions_done", missions_done)
+	c.set_value("main", "mission_best", mission_best)
 	c.set_value("main", "rate_asked", rate_asked)
 	c.set_value("main", "tutorial_done", tutorial_done)
 	c.set_value("main", "lessons_learned", lessons_learned)
@@ -182,6 +184,7 @@ func load_game() -> void:
 	exam_tries = c.get_value("main", "exam_tries", 0)
 	lessons_done = c.get_value("main", "lessons_done", {})
 	missions_done = c.get_value("main", "missions_done", {})
+	mission_best = c.get_value("main", "mission_best", {})
 	rate_asked = c.get_value("main", "rate_asked", false)
 	tutorial_done = c.get_value("main", "tutorial_done", false)
 	lessons_learned = c.get_value("main", "lessons_learned", {})

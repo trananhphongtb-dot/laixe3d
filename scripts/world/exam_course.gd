@@ -590,6 +590,8 @@ func _end(passed: bool, reason: String = "") -> void:
 func _lesson_done(L: Dictionary) -> void:
 	L["st"]["done"] = true
 	Sfx.play("ding", -3.0)
+	if not ended:
+		hud.toast("✓ " + Game.tf("lesson_pass", [L["num"], Game.t("lesson_%d" % L["num"]), score]), Color(0.45, 1.0, 0.55), 3.5)
 	if practice > 0:
 		var ok := score >= PASS_SCORE
 		_end(ok)

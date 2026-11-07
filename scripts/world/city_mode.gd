@@ -13,6 +13,10 @@ var mission_id: int = -1
 var violations: int = 0
 var earned: int = 0
 var time: float = 0.0
+var _off_t: float = 0.0
+var _solid_t: float = 0.0
+var _off_cool: float = 0.0
+var _off_warned: bool = false
 var _dist_acc: float = 0.0
 var _last_pos: Vector3
 var _cool: Dictionary = {}
@@ -40,7 +44,7 @@ var _popup: Control
 const REWIND_S := 8.0          # mặc định lùi bao nhiêu giây
 const HIST_KEEP := 16.0       # lưu lịch sử bấy nhiêu giây
 # Lỗi báo muộn (xi nhan, đèn đỏ, sai làn) cần lùi xa hơn để kịp tới trước chỗ sai
-const REWIND_BY := {"v_red_light": 12.0, "v_no_signal": 12.0, "v_wrong_lane": 10.0, "v_speed": 7.0, "v_crash": 8.0}
+const REWIND_BY := {"v_red_light": 12.0, "v_no_signal": 12.0, "v_wrong_lane": 10.0, "v_speed": 7.0, "v_solid_line": 8.0, "v_crash": 8.0}
 var _countdown: bool = false
 
 
@@ -192,7 +196,8 @@ func _physics_process(delta: float) -> void:
 		_last_blink = time
 
 	# tốc độ
-	if car.speed_kmh > 62.0:
+	var limit := city.speed_limit_at(p)
+	if car.speed_kmh > float(limit) + 3.0:
 		_violate("v_speed", 8.0)
 	# dây an toàn
 	if not car.seatbelt and car.speed_kmh > 8.0:
@@ -216,12 +221,28 @@ func _physics_process(delta: float) -> void:
 		if axis_ok and car.speed_kmh > 5.0:
 			var lat := (p - center).dot(City.right_of(h))
 			wrong = lat < -0.7
+	# đè vạch liền: chiếm sang bên trái tim đường trong đoạn có vạch đôi liền
+	var sz := city.solid_center(p)
+	if not sz.is_empty() and car.speed_kmh > 5.0:
+		var alongx: bool = sz["alongx"]
+		var axis_ok2 := absf(h.x) > 0.75 if alongx else absf(h.z) > 0.75
+		if axis_ok2:
+			var ctr := Vector3(p.x, 0, float(sz["c"])) if alongx else Vector3(float(sz["c"]), 0, p.z)
+			var lat2 := (p - ctr).dot(City.right_of(h))
+			_solid_t = _solid_t + delta if lat2 < -0.25 else 0.0
+			if _solid_t > 0.4:
+				_violate("v_solid_line", 6.0)
+		else:
+			_solid_t = 0.0
+	else:
+		_solid_t = 0.0
 	if wrong:
 		_wrong_t += delta
 		if _wrong_t > 1.2:
 			_violate("v_wrong_lane", 6.0)
 	else:
 		_wrong_t = 0.0
+	_check_off_road(delta, p)
 	# vượt đèn đỏ
 	var fp := car.front_point()
 	var cardinal := Vector3(signf(h.x), 0, 0) if absf(h.x) > absf(h.z) else Vector3(0, 0, signf(h.z))
@@ -265,13 +286,70 @@ func _physics_process(delta: float) -> void:
 		_update_info()
 
 
+## Đi lệch khỏi đường quá xa: báo, rồi hỏi có muốn quay về đường chính không
+func _check_off_road(delta: float, p: Vector3) -> void:
+	_off_cool = maxf(0.0, _off_cool - delta)
+	var inside: bool = p.x > float(city.xs[0]) - 40.0 and p.x < city.EX and p.z > float(city.zs[0]) - 40.0 and p.z < city.EZ
+	var off: bool = inside and minf(absf(p.x - city.snap_x(p.x)), absf(p.z - city.snap_z(p.z))) > City.RW + 6.0
+	if not off:
+		_off_t = 0.0
+		_off_warned = false
+		return
+	_off_t += delta
+	if _off_t > 1.0 and not _off_warned:
+		_off_warned = true
+		hud.toast(Game.t("off_toast"), Color(1.0, 0.6, 0.3), 3.0)
+		Sfx.play("chime", -4.0)
+	if _off_t > 3.5 and _off_cool <= 0.0:
+		_off_cool = 25.0
+		_off_t = 0.0
+		get_tree().paused = true
+		UiTheme.dialog(hud, Game.t("off_title"), Game.t("off_body"), [
+			[Game.t("off_yes"), func():
+				_return_to_road()
+				get_tree().paused = false],
+			[Game.t("off_no"), func(): get_tree().paused = false],
+		], Color(1.0, 0.7, 0.3))
+
+
+## Đưa xe về làn phải của đường gần nhất, hướng theo chiều xe đang quay
+func _return_to_road() -> void:
+	var p := car.global_position
+	var h := car.forward()
+	h.y = 0.0
+	h = h.normalized()
+	var xl := city.snap_x(p.x)
+	var zl := city.snap_z(p.z)
+	var dir: Vector3
+	var center: Vector3
+	if absf(p.x - xl) <= absf(p.z - zl):
+		dir = Vector3(0, 0, 1) if h.z >= 0.0 else Vector3(0, 0, -1)
+		center = Vector3(xl, 0, clampf(p.z, float(city.zs[0]) + 25.0, city.EZ - 25.0))
+	else:
+		dir = Vector3(1, 0, 0) if h.x >= 0.0 else Vector3(-1, 0, 0)
+		center = Vector3(clampf(p.x, float(city.xs[0]) + 25.0, city.EX - 25.0), 0, zl)
+	var pos := center + City.right_of(dir) * City.LANE
+	car.global_transform = Transform3D(Basis(Vector3.UP, atan2(dir.x, dir.z)), pos + Vector3(0, 0.3, 0))
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	hud.reset_steering()
+	_hist.clear()
+	hud.toast(Game.t("off_back"), UiTheme.ACCENT, 2.0)
+
+
 func _update_info() -> void:
 	if mission_id < 0:
-		hud.set_info("%s\n%s: %d   %s: %d" % [Game.t("menu_free"), Game.t("viol_count"), violations, Game.t("money"), Game.money])
+		var lim_txt := ""
+		if car != null:
+			lim_txt = "   %s: %d" % [Game.t("speed_limit"), city.speed_limit_at(car.global_position)]
+		hud.set_info("%s\n%s: %d   %s: %d%s" % [Game.t("menu_free"), Game.t("viol_count"), violations, Game.t("money"), Game.money, lim_txt])
 		return
-	var left := maxi(0, int(float(mission["time"]) - time))
+	var el := int(time)
 	var txt := "%s %d: %s\n%s: %d:%02d   %s: %d" % [Game.t("mission_word"), mission_id + 1, Game.t("mk_" + String(mission["kind"])),
-		Game.t("time_left"), left / 60, left % 60, Game.t("viol_count"), violations]
+		Game.t("time_elapsed"), el / 60, el % 60, Game.t("viol_count"), violations]
+	if Game.mission_best.has(mission_id):
+		var bt := int(Game.mission_best[mission_id])
+		txt += "   %s: %d:%02d" % [Game.t("m_best"), bt / 60, bt % 60]
 	if _target_idx < _targets.size():
 		var tg: Dictionary = _targets[_target_idx]
 		txt += "\n> " + Game.t(String(tg["label"]))
@@ -394,9 +472,6 @@ func _parked_car(pos: Vector3, d: Vector3) -> void:
 
 
 func _update_mission(delta: float) -> void:
-	if float(mission["time"]) - time <= 0.0:
-		_finish(false, Game.t("m_timeout"))
-		return
 	if _target_idx >= _targets.size():
 		return
 	var tg: Dictionary = _targets[_target_idx]
@@ -438,11 +513,20 @@ func _finish(success: bool, reason: String) -> void:
 	var details := ""
 	if success:
 		var factor := clampf(1.0 - violations * 0.1, 0.3, 1.0)
-		var time_bonus := clampf((float(mission["time"]) - time) / float(mission["time"]), 0.0, 1.0)
-		reward = int(round(float(mission["reward"]) * factor * (0.85 + time_bonus * 0.3)))
+		reward = int(round(float(mission["reward"]) * factor))
 		Game.missions_done[mission_id] = true
 		Game.add_money(reward)
-		details = Game.tf("m_result", [violations, reward])
+		var t_now := int(time)
+		details = Game.tf("m_result", [violations, reward]) + "\n" + Game.tf("m_time_result", [t_now / 60, t_now % 60])
+		if Game.mission_best.has(mission_id):
+			var bt := float(Game.mission_best[mission_id])
+			var bi := int(bt)
+			if time < bt:
+				details += "\n" + Game.tf("m_newbest", [bi / 60, bi % 60])
+			else:
+				details += "\n" + Game.tf("m_prevbest", [bi / 60, bi % 60])
+		if not Game.mission_best.has(mission_id) or time < float(Game.mission_best[mission_id]):
+			Game.mission_best[mission_id] = time
 		Sfx.play("win", 0.0)
 	else:
 		details = reason

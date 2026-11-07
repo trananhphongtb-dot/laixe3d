@@ -30,6 +30,7 @@ var layout_seed: int = -1        # < 0: ngẫu nhiên mỗi lần chơi
 var night: bool = false
 var lights: Dictionary = {}      # Vector2i -> {mats:[ns, ew], t, phase, offset}
 var ai_cars: Array = []
+var solid_zones: Array = []      # đoạn vạch liền (cấm lấn sang làn trái): {"alongx", "c", "a", "b"}
 var obstacles: Array = []        # node có global_position cần né (xe đỗ...)
 var player: Node3D
 var _rng := RandomNumberGenerator.new()
@@ -67,6 +68,8 @@ func _mats() -> void:
 	MeshBatch.mat("c_lamp_pole", Color(0.3, 0.32, 0.35), 0.5, 0.0, 0.5)
 	MeshBatch.mat("c_lamp", Color(1.0, 0.85, 0.55), 0.5, 3.0 if night else 0.3)
 	MeshBatch.mat("c_wall_border", Color(0.55, 0.55, 0.52), 0.9)
+	MeshBatch.mat("c_sign_red", Color(0.85, 0.1, 0.1), 0.6)
+	MeshBatch.mat("c_sign_white", Color(0.96, 0.96, 0.96), 0.6)
 	MeshBatch.mat("bund_road", Color(0.48, 0.44, 0.32), 1.0)
 	var palette := [Color(0.85, 0.8, 0.7), Color(0.7, 0.75, 0.8), Color(0.9, 0.88, 0.85), Color(0.75, 0.6, 0.5),
 		Color(0.6, 0.65, 0.6), Color(0.95, 0.9, 0.75), Color(0.5, 0.55, 0.65)]
@@ -356,14 +359,34 @@ func _road(a: Vector3, b: Vector3, urban: bool = true, rseed: int = 0) -> void:
 	var s := a + d * RW
 	var e := b - d * RW
 	batch.strip("c_asph", s, e, RW * 2, -0.005, 0.03)
-	# vạch tim đường đứt đoạn, liền gần ngã tư
+	# vạch tim đường đứt đoạn, liền gần ngã tư; thêm một đoạn vạch đôi liền ở giữa (cấm lấn làn)
 	var length := s.distance_to(e)
+	var z0 := -1.0
+	var z1 := -1.0
+	if rseed % 2 == 0 and length > 190.0:
+		z0 = length * 0.36
+		z1 = z0 + minf(75.0, length * 0.3)
+		for off: float in [-0.14, 0.14]:
+			batch.strip("c_yline", s + d * z0 + r * off, s + d * z1 + r * off, 0.12, 0.012, 0.02)
+		var along_x := absf(d.x) > 0.5
+		var p0 := s + d * z0
+		var p1 := s + d * z1
+		if along_x:
+			solid_zones.append({"alongx": true, "c": a.z, "a": minf(p0.x, p1.x), "b": maxf(p0.x, p1.x)})
+		else:
+			solid_zones.append({"alongx": false, "c": a.x, "a": minf(p0.z, p1.z), "b": maxf(p0.z, p1.z)})
 	var u := 0.0
 	while u < length:
 		var solid := u < 14.0 or u > length - 14.0
 		var seg := 3.0 if not solid else 2.0
-		batch.strip("c_yline" if solid else "c_line", s + d * u, s + d * minf(u + seg, length), 0.15, 0.012, 0.02)
+		var in_zone := z0 >= 0.0 and u >= z0 - 2.0 and u <= z1
+		if not in_zone:
+			batch.strip("c_yline" if solid else "c_line", s + d * u, s + d * minf(u + seg, length), 0.15, 0.012, 0.02)
 		u += seg if solid else 7.0
+	# biển tốc độ tối đa cho từng chiều đi
+	var lim := 50 if urban else 60
+	_speed_sign(s + d * 28.0 + r * (RW + 1.3), -d, lim)
+	_speed_sign(e - d * 28.0 - r * (RW + 1.3), d, lim)
 	if not urban:
 		_country_edge(s, e, d, r, length, rseed)
 		return
@@ -390,6 +413,54 @@ func _road(a: Vector3, b: Vector3, urban: bool = true, rseed: int = 0) -> void:
 				batch.cyl("c_lamp_pole", tp + Vector3(0, 3.2, 0), 0.07, 6.4)
 				batch.box("c_lamp", tp + Vector3(0, 6.4, 0) - r * side * 0.9, Vector3(0.5, 0.15, 0.3), atan2(d.x, d.z))
 			k += 10.0
+
+
+func _speed_sign(pos: Vector3, toward: Vector3, limit: int) -> void:
+	var yaw := atan2(toward.x, toward.z)
+	batch.cyl("c_lamp_pole", pos + Vector3(0, 1.3, 0), 0.05, 2.6)
+	batch.box("c_sign_red", pos + Vector3(0, 2.7, 0), Vector3(0.85, 0.85, 0.05), yaw)
+	batch.box("c_sign_white", pos + Vector3(0, 2.7, 0) + toward * 0.03, Vector3(0.6, 0.6, 0.05), yaw)
+	var lb := Label3D.new()
+	lb.text = str(limit)
+	lb.font_size = 96
+	lb.pixel_size = 0.0065
+	lb.modulate = Color(0.05, 0.05, 0.06)
+	lb.outline_size = 0
+	lb.shaded = false
+	lb.position = pos + Vector3(0, 2.7, 0) + toward * 0.065
+	lb.rotation.y = yaw
+	lb.visibility_range_end = 130.0
+	add_child(lb)
+
+
+## Giới hạn tốc độ (km/h) tại vị trí p theo loại đường: trong khu đông nhà 50, ngoài đường 60
+func speed_limit_at(p: Vector3) -> int:
+	var xl := snap_x(p.x)
+	var zl := snap_z(p.z)
+	var i := xs.find(xl)
+	var j := zs.find(zl)
+	if i < 0 or j < 0:
+		return 60
+	if absf(p.x - xl) <= absf(p.z - zl):
+		var k := 0
+		while k < N - 2 and p.z > float(zs[k + 1]):
+			k += 1
+		return 50 if lit.get(Vector2i(i, k), false) and lit.get(Vector2i(i, k + 1), false) else 60
+	var k2 := 0
+	while k2 < N - 2 and p.x > float(xs[k2 + 1]):
+		k2 += 1
+	return 50 if lit.get(Vector2i(k2, j), false) and lit.get(Vector2i(k2 + 1, j), false) else 60
+
+
+## Có đang nằm trong đoạn vạch liền không? Trả về toạ độ tim đường nếu có (còn không trả -1e9)
+func solid_center(p: Vector3) -> Dictionary:
+	for z in solid_zones:
+		if bool(z["alongx"]):
+			if absf(p.z - float(z["c"])) < RW and p.x > float(z["a"]) and p.x < float(z["b"]):
+				return z
+		elif absf(p.x - float(z["c"])) < RW and p.z > float(z["a"]) and p.z < float(z["b"]):
+			return z
+	return {}
 
 
 ## Đường ngoài phố: lề đất hai bên, cây mọc thưa tự nhiên (không vỉa hè, không đèn đường)
@@ -510,12 +581,13 @@ func spawn_traffic(count: int) -> void:
 					edges.append([Vector2i(i, j), d])
 	edges.shuffle()
 	var styles := ["sedan", "hatch", "suv", "pickup", "sedan", "hatch"]
+	var kinds := ["car", "moto", "car", "truck", "moto", "car", "bike", "car", "moto", "car", "moto", "truck"]
 	for k in mini(count, edges.size()):
 		var e: Array = edges[k]
 		var car := AiCar.new()
 		var spec: Dictionary = Game.CARS[styles[k % styles.size()]]
 		var col: Color = Game.COLORS[_rng.randi_range(0, Game.COLORS.size() - 1)]
-		car.setup(self, spec, col, e[0], e[1], _rng.randf_range(0.15, 0.6))
+		car.setup(self, spec, col, e[0], e[1], _rng.randf_range(0.15, 0.6), kinds[k % kinds.size()])
 		add_child(car)
 		ai_cars.append(car)
 
