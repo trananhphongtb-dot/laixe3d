@@ -99,7 +99,7 @@ jobs:
 
       - name: Version code
         run: |
-          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          sed -i "s/^version\/code=.*/version\/code=$((${{ github.run_number }} + 100))/" export_presets.cfg
           sed -i "s/^version\/name=.*/version\/name=\"1.0.${{ github.run_number }}\"/" export_presets.cfg
           grep "version/" export_presets.cfg
 
