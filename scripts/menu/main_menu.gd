@@ -541,7 +541,7 @@ func _page_free() -> void:
 	content.add_child(_toggle_row([[false, Game.t("sunny")], [true, Game.t("rainy")]], Game.free_rain, func(v): Game.free_rain = v))
 	content.add_child(UiTheme.label(Game.t("theme"), 27))
 	var tg := _toggle_row([["random", Game.t("th_random")], ["country", Game.t("th_country")], ["tea", Game.t("th_tea")],
-		["coast", Game.t("th_coast")], ["lake", Game.t("th_lake")]], Game.free_theme, func(v): Game.free_theme = v)
+		["coast", Game.t("th_coast")], ["lake", Game.t("th_lake")], ["forest", Game.t("th_forest")]], Game.free_theme, func(v): Game.free_theme = v)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 8)

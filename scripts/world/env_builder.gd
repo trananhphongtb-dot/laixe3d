@@ -40,8 +40,21 @@ static func build(parent: Node3D, night: bool, rain: bool) -> Dictionary:
 	elif night:
 		env.fog_light_color = Color(0.05, 0.06, 0.1)
 		env.fog_density = 0.006
-	if g >= 2 and not night:
-		env.glow_enabled = false
+	# ban ngày quang: sương mỏng cho chiều sâu, xa mờ dần về phía chân trời
+	if not rain and not night:
+		env.fog_enabled = true
+		env.fog_light_color = Color(0.68, 0.8, 0.92)
+		env.fog_density = 0.0007
+		env.fog_sky_affect = 0.15
+	# bloom nhẹ (đèn pha, đèn đường, ánh nắng) và chỉnh màu cho tươi hơn
+	if g >= 1:
+		env.glow_enabled = true
+		env.glow_intensity = 0.7 if night else 0.35
+		env.glow_bloom = 0.08 if night else 0.02
+		env.glow_hdr_threshold = 0.9 if night else 1.1
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.1
+	env.adjustment_contrast = 1.05
 	we.environment = env
 	parent.add_child(we)
 
@@ -56,7 +69,7 @@ static func build(parent: Node3D, night: bool, rain: bool) -> Dictionary:
 		sun.light_energy = 1.1
 		sun.light_color = Color(1.0, 0.97, 0.9)
 	sun.shadow_enabled = g >= 1 and not night
-	sun.directional_shadow_max_distance = 60.0 if g == 1 else 110.0
+	sun.directional_shadow_max_distance = 85.0 if g == 1 else 120.0
 	parent.add_child(sun)
 
 	var res := {"env": env, "sun": sun}

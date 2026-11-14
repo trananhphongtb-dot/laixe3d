@@ -4,8 +4,8 @@ extends RefCounted
 
 static var _tex: Dictionary = {}
 static var cur_rain: bool = false
-static var theme: String = "country"     # country · tea · coast · lake
-const THEMES := ["country", "tea", "coast", "lake"]
+static var theme: String = "country"     # country · tea · coast · lake · forest
+const THEMES := ["country", "tea", "coast", "lake", "forest"]
 const RACE_THEMES := ["country", "tea", "coast", "lake", "forest", "mountain"]
 
 
@@ -436,6 +436,9 @@ static func surround(parent: Node3D, center: Vector3, inner: Rect2, outer_r: flo
 		"lake":
 			lake_park(b, area, excl, inner, rseed)
 			far_col = Color(0.33, 0.52, 0.24)
+		"forest":
+			forest_land(b, area, excl, rseed)
+			far_col = Color(0.17, 0.32, 0.15)
 		_:
 			rice_fields(b, area, excl, rseed)
 	backdrop(parent, b, center, outer_r, night, rain, far_col)
@@ -521,6 +524,30 @@ static func willow(b: MeshBatch, p: Vector3, s: float = 1.0) -> void:
 
 
 ## Đồi chè: luống chè chạy theo hàng trên các ô, xen hàng thông
+## Rừng thông và cây lá rộng phủ kín vùng ngoài thành phố (không có nhà)
+static func forest_land(b: MeshBatch, area: Rect2, exclude: Array, rseed: int) -> void:
+	_theme_mats()
+	MeshBatch.mat("forest_floor", Color(0.15, 0.28, 0.13), 1.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = rseed
+	var cell := 26.0 if gfx() > 0 else 36.0
+	var x := area.position.x
+	while x < area.end.x:
+		var z := area.position.y
+		while z < area.end.y:
+			var c := Vector2(x + cell * 0.5, z + cell * 0.5)
+			if not _in_any(c, exclude, cell * 0.6):
+				b.box("forest_floor", Vector3(c.x, 0.02, c.y), Vector3(cell, 0.04, cell))
+				if rng.randf() < 0.85:
+					var p := Vector3(c.x + rng.randf_range(-cell * 0.35, cell * 0.35), 0, c.y + rng.randf_range(-cell * 0.35, cell * 0.35))
+					if rng.randf() < 0.6:
+						pine(b, p, rng.randf_range(1.0, 1.8))
+					else:
+						tree(b, p, rng.randf_range(1.0, 1.6))
+			z += cell
+		x += cell
+
+
 static func tea_hills(b: MeshBatch, area: Rect2, exclude: Array, rseed: int) -> void:
 	_theme_mats()
 	var rng := RandomNumberGenerator.new()

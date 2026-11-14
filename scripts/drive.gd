@@ -23,7 +23,7 @@ var _blink_peak: float = 0.0
 
 
 func _ready() -> void:
-	get_tree().root.get_viewport().msaa_3d = Viewport.MSAA_2X if int(Game.settings.get("graphics", 1)) >= 2 else Viewport.MSAA_DISABLED
+	get_tree().root.get_viewport().msaa_3d = (Viewport.MSAA_4X if int(Game.settings.get("graphics", 1)) >= 2 else Viewport.MSAA_2X) if int(Game.settings.get("graphics", 1)) >= 1 else Viewport.MSAA_DISABLED
 	get_viewport().scaling_3d_scale = [0.7, 0.85, 1.0][int(Game.settings.get("graphics", 1))]
 	var m := Game.mode
 	if m == "free":
@@ -120,7 +120,7 @@ func _ready() -> void:
 		city_mode.setup(city, car, hud, Game.mission_id if m == "mission" else -1)
 		city_mode.mission_finished.connect(_on_mission_finished)
 		var g: int = Game.settings.get("graphics", 1)
-		city.spawn_traffic(city.traffic_for([14, 20, 26][g]))
+		city.spawn_traffic(city.traffic_for([24, 34, 44][g]))
 		if night:
 			car.set_lights(true)
 		if m == "free":

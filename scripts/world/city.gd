@@ -13,10 +13,11 @@ const GAPS := [150.0, 190.0, 240.0, 300.0, 360.0]
 const URBAN := ["res", "school", "market", "gas", "factory", "temple"]
 # Tỉ lệ các loại khối theo kiểu cảnh: phố thì nhiều nhà, quê thì nhiều ruộng và rừng
 const MIX := {
-	"country": {"field": 34, "forest": 16, "village": 18, "res": 12, "park": 6, "market": 4, "gas": 4, "temple": 6},
-	"tea": {"hill": 34, "forest": 22, "village": 14, "field": 8, "res": 10, "park": 4, "gas": 4, "temple": 4},
-	"coast": {"res": 30, "park": 14, "village": 14, "market": 8, "forest": 10, "field": 8, "gas": 6, "school": 6, "temple": 4},
-	"lake": {"park": 24, "res": 22, "forest": 16, "village": 10, "school": 8, "temple": 8, "field": 6, "market": 3, "gas": 3},
+	"country": {"field": 38, "forest": 26, "village": 6, "res": 2, "park": 8, "market": 2, "gas": 3, "temple": 3},
+	"tea": {"hill": 38, "forest": 30, "village": 4, "field": 8, "res": 2, "park": 6, "gas": 3, "temple": 2},
+	"coast": {"park": 22, "forest": 20, "field": 12, "res": 10, "village": 6, "market": 4, "gas": 4, "school": 2, "temple": 2},
+	"lake": {"park": 32, "forest": 26, "field": 10, "village": 4, "res": 8, "school": 3, "temple": 4, "market": 2, "gas": 2},
+	"forest": {"forest": 72, "park": 10, "field": 8, "village": 2, "gas": 3},
 }
 
 var batch := MeshBatch.new()
@@ -108,7 +109,7 @@ func _layout() -> void:
 					kind = String(k)
 					break
 			kinds[Vector2i(i, j)] = kind
-	kinds[Vector2i(0, 0)] = "res" if Scenery.theme != "tea" else "village"
+	kinds[Vector2i(0, 0)] = "park"
 	# đèn tín hiệu chỉ đặt ở nơi có khu dân cư; đường quê thì thưa đèn
 	var n_lit := 0
 	for i in N:
@@ -315,9 +316,9 @@ func _outskirts() -> void:
 	# hàng tre dọc bờ sông, làng mái ngói, cột điện, cây ven đường
 	Scenery.bamboo_row(sbatch, Vector3(RIVER_X - 18, 0, -40), Vector3(RIVER_X - 18, 0, z1 - 14), 6.0, 3)
 	Scenery.bamboo_row(sbatch, Vector3(RIVER_X + 18, 0, z2 + 14), Vector3(RIVER_X + 18, 0, EZ + 50), 6.0, 4)
-	Scenery.village(sbatch, Vector3(RIVER_X + 90, 0, z1 - 20), 4, Vector3(0, 0, 1), 11)
-	Scenery.village(sbatch, Vector3(RIVER_X - 100, 0, z2 + 22), 3, Vector3(0, 0, -1), 12)
-	Scenery.village(sbatch, Vector3(RIVER_X + 90, 0, z2 + 24), 3, Vector3(0, 0, -1), 13)
+	# cảnh thiên nhiên: bớt nhà (chè, hồ, rừng không có làng ven sông)
+	if Scenery.theme == "country" or Scenery.theme == "coast":
+		Scenery.village(sbatch, Vector3(RIVER_X + 90, 0, z1 - 20), 2, Vector3(0, 0, 1), 11)
 	Scenery.power_line(sbatch, Vector3(EDGE + 40, 0, z1 - 7.5), Vector3(OUT_X - 6, 0, z1 - 7.5), 38.0)
 	Scenery.power_line(sbatch, Vector3(OUT_X + 7.5, 0, z1), Vector3(OUT_X + 7.5, 0, z2), 40.0)
 	var x := EDGE + 50.0
@@ -474,7 +475,7 @@ func _country_edge(s: Vector3, e: Vector3, d: Vector3, r: Vector3, length: float
 		var k := rng.randf_range(10.0, 22.0)
 		while k < length - 10.0:
 			var tp := s + d * k + r * (RW + rng.randf_range(2.5, 9.0)) * side
-			if Scenery.theme == "tea" and rng.randf() < 0.5:
+			if (Scenery.theme == "tea" or Scenery.theme == "forest") and rng.randf() < 0.5:
 				Scenery.pine(batch, tp, rng.randf_range(0.9, 1.4))
 			else:
 				Scenery.tree(batch, tp, rng.randf_range(0.8, 1.3))
@@ -565,8 +566,9 @@ func traffic_for(count: int) -> int:
 	for v in lit.values():
 		if v:
 			n += 1
-	var f := 0.55 + 0.45 * float(n) / float(N * N)
-	return maxi(4, roundi(float(count) * f))
+	# đường nào cũng đông xe: ngoài phố chỉ vắng hơn một chút
+	var f := 0.85 + 0.15 * float(n) / float(N * N)
+	return maxi(10, roundi(float(count) * f))
 
 
 # ------------------------------------------------------------------ xe AI
